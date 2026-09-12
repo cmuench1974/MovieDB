@@ -1,0 +1,43 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: moviedb
+      POSTGRES_PASSWORD: moviedb
+      POSTGRES_DB: moviedb
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U moviedb -d moviedb"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://moviedb:moviedb@db:5432/moviedb
+      TMDB_API_KEY: ${TMDB_API_KEY}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@localhost}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-changeme-please}
+      AUTH_SECRET: ${AUTH_SECRET}
+      AUTH_TRUST_HOST: "true"
+      SCAN_PATHS: /media
+      SMB_BRIDGE_URL: ${SMB_BRIDGE_URL:-http://smb-bridge:39221}
+      SMB_BRIDGE_TOKEN: ${SMB_BRIDGE_TOKEN:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+      - "smb-bridge:host-gateway"
+    volumes:
+      # Bind-mount your SMB/NFS share (or a local movies folder) here.
+      - ${MEDIA_PATH:-./media}:/media:ro
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  postgres_data:

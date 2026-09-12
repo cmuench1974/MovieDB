@@ -1,0 +1,117 @@
+// PostgreSQL schema for the movie catalog.
+// Video files can exist without a movie (unmatched), and one movie can have several files.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+}
+
+enum MatchStatus {
+  pending
+  matched
+  needs_review
+  ignored
+}
+
+enum FolderKind {
+  local
+  smb
+}
+
+model Genre {
+  id     String  @id @default(cuid())
+  tmdbId Int     @unique
+  name   String
+  movies Movie[]
+}
+
+model Movie {
+  id            String      @id @default(cuid())
+  tmdbId        Int         @unique
+  title         String
+  originalTitle String?
+  year          Int?
+  overview      String?
+  runtime       Int?
+  voteAverage   Float?
+  posterPath    String?
+  backdropPath  String?
+  releaseDate   String?
+  // Snapshot of the top billed cast from TMDB (name, character, profile path).
+  cast          Json?
+  genres        Genre[]
+  hidden        Boolean     @default(false)
+  videoFiles    VideoFile[]
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([year])
+  @@index([title])
+  @@index([hidden])
+}
+
+model ScanFolder {
+  id          String      @id @default(cuid())
+  label       String
+  kind        FolderKind
+  // Local/NFS: absolute path visible inside the container (e.g. /media).
+  path        String?
+  smbHost     String?
+  smbShare    String?
+  smbFolder   String?
+  smbDomain   String?
+  smbUsername String?
+  // AES-GCM payload, encrypted with AUTH_SECRET — never send this to the browser.
+  smbPassword String?
+  lastError   String?
+  createdAt   DateTime    @default(now())
+  videoFiles  VideoFile[]
+}
+
+model VideoFile {
+  id          String      @id @default(cuid())
+  path        String      @unique
+  filename    String
+  size        BigInt
+  parsedTitle String?
+  parsedYear  Int?
+  status      MatchStatus @default(pending)
+  // Top TMDB search hits stored for the admin review dialog.
+  candidates  Json?
+  movieId     String?
+  movie       Movie?      @relation(fields: [movieId], references: [id], onDelete: SetNull)
+  folderId    String?
+  folder      ScanFolder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  lastSeenAt  DateTime    @default(now())
+  createdAt   DateTime    @default(now())
+
+  @@index([status])
+  @@index([folderId])
+}
+
+model ScanJob {
+  id          String    @id @default(cuid())
+  startedAt   DateTime  @default(now())
+  finishedAt  DateTime?
+  status      String
+  filesFound  Int       @default(0)
+  matched     Int       @default(0)
+  needsReview Int       @default(0)
+  error       String?
+}
+
+model AppSetting {
+  key   String @id
+  value String
+}

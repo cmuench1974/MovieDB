@@ -1,0 +1,22 @@
+# Dependencies
+node_modules
+npm-debug.log*
+
+# Next.js
+.next
+out
+
+# Git / IDE
+.git
+.gitignore
+.cursor
+
+# Local env and media (media is mounted at runtime)
+.env
+.env.*
+!.env.example
+media
+
+# OS
+Thumbs.db
+.DS_Store
