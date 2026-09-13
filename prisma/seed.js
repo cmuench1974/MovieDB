@@ -28,10 +28,17 @@ async function main() {
           .replace(/[^a-z0-9_]/g, "_");
         if (username.length < 3) username = `${username}_admin`;
         username = username.slice(0, 32);
-        await prisma.user.create({
-          data: { email, username, passwordHash, role: "admin" },
-        });
-        console.log(`Created admin user ${email}.`);
+        const usernameTaken = await prisma.user.findUnique({ where: { username } });
+        if (usernameTaken) {
+          console.log(
+            `Username ${username} is already taken; not creating ${email}. Use Admin → Users.`,
+          );
+        } else {
+          await prisma.user.create({
+            data: { email, username, passwordHash, role: "admin" },
+          });
+          console.log(`Created admin user ${email}.`);
+        }
       }
     } else {
       console.warn("ADMIN_EMAIL or ADMIN_PASSWORD is missing — skipping admin seed.");

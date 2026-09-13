@@ -66,7 +66,7 @@ function adminSections(site: string): GuideSection[] {
     {
       title: "Folders and scanning",
       items: [
-        "Add a local/NFS path (visible inside the app container) or an SMB share on the Scan page.",
+        "Add a local/NFS path (visible inside the app container) or an SMB share under Settings.",
         "Scan folders re-checks every file, including technical media info.",
         "Scan new movies only imports files that are not in the library yet.",
         "Update metadata refreshes TMDB title, overview, cast, and genres. Chosen posters and backdrops stay as they are.",
@@ -89,7 +89,7 @@ function adminSections(site: string): GuideSection[] {
         `Create accounts at ${site}/admin/users (username, email, password, user or administrator).`,
         "A welcome email is sent when SMTP is configured. You can attach this site guide, matching the new account’s group.",
         "Per-user option: email when new movies are added.",
-        "SMTP lives on the Scan/admin page. Port 587 uses STARTTLS; port 465 uses implicit TLS. Send a test email after changing settings.",
+        "SMTP lives under Settings. Port 587 uses STARTTLS; port 465 uses implicit TLS. Send a test email after changing settings.",
       ],
     },
     {
