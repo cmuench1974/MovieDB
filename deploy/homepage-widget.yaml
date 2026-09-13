@@ -1,0 +1,30 @@
+# Homepage (gethomepage.dev) — Custom API widget for MovieDB
+#
+# Hinter Nginx die öffentliche HTTPS-URL nutzen. Der Host-Port (z. B. 3002)
+# ist nur nötig, wenn Homepage die App nicht über den Proxy erreicht.
+# Die url muss vom Homepage-Container aus erreichbar sein.
+#
+# Optional: STATS_API_TOKEN in der MovieDB-.env setzen und dann:
+#   headers:
+#     Authorization: Bearer <derselbe-token>
+
+- Media:
+    - MovieDB:
+        icon: mdi-movie-open
+        href: https://moviedb.camuench.casa
+        description: Personal movie catalog
+        siteMonitor: https://moviedb.camuench.casa
+        widget:
+          type: customapi
+          url: https://moviedb.camuench.casa/api/stats
+          refreshInterval: 60000
+          mappings:
+            - field: catalog
+              label: Catalog
+              format: number
+            - field: files
+              label: Files
+              format: number
+            - field: needsReview
+              label: Review
+              format: number

@@ -61,6 +61,7 @@ function adminSections(site: string): GuideSection[] {
       items: [
         "Administrators see Admin in the header. Regular users cannot open /admin.",
         `Start at ${site}/admin for folders, scans, TMDB, email, backup, and user accounts.`,
+        "A Homepage dashboard can show how many titles, files, and review-queue items are in the library.",
       ],
     },
     {

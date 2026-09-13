@@ -27,6 +27,7 @@ services:
       AUTH_SECRET: ${AUTH_SECRET}
       AUTH_URL: ${AUTH_URL:-http://localhost:3000}
       AUTH_TRUST_HOST: "true"
+      STATS_API_TOKEN: ${STATS_API_TOKEN:-}
       SCAN_PATHS: /media
       SMB_BRIDGE_URL: ${SMB_BRIDGE_URL:-http://smb-bridge:39221}
       SMB_BRIDGE_TOKEN: ${SMB_BRIDGE_TOKEN:-}
