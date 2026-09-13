@@ -96,6 +96,24 @@ model VideoFile {
   lastSeenAt  DateTime    @default(now())
   createdAt   DateTime    @default(now())
 
+  // Eigene Texte pro Version. Leer = Fallback auf Movie/TMDB.
+  title     String?
+  year      Int?
+  overview  String?
+
+  // Technische Metadaten von ffprobe, sonst Hinweise aus dem Dateinamen.
+  width           Int?
+  height          Int?
+  // sd | hd | uhd
+  resolutionClass String?
+  hdrFormat       String?
+  durationSec     Int?
+  videoCodec      String?
+  audioTracks     Json?
+  subtitleTracks  Json?
+  probeError      String?
+  probedAt        DateTime?
+
   @@index([status])
   @@index([folderId])
 }

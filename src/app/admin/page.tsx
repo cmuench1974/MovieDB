@@ -4,6 +4,7 @@ import { ScanButton } from "@/components/ScanButton";
 import { FolderForm } from "@/components/FolderForm";
 import { FolderList } from "@/components/FolderList";
 import { TmdbKeyForm } from "@/components/TmdbKeyForm";
+import { DatabaseTools } from "@/components/DatabaseTools";
 import { hasTmdbApiKey } from "@/lib/settings";
 import Link from "next/link";
 
@@ -75,6 +76,8 @@ export default async function AdminPage() {
         </p>
         <TmdbKeyForm configured={tmdbConfigured} />
       </section>
+
+      <DatabaseTools />
 
       <section className="mt-8 rounded-xl border border-zinc-800 bg-zinc-900 p-5">
         <h2 className="text-lg font-medium">Scan</h2>

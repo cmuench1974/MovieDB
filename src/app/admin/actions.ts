@@ -7,12 +7,13 @@ import { ignoreFile, matchFileByUrl, matchFileToTmdb } from "@/lib/matching";
 import {
   addScanFolder,
   deleteMovie,
-  relinkMovieFromTmdb,
   removeScanFolder,
+  saveMovieVersion,
   setMovieHidden,
-  updateMovie,
 } from "@/lib/library";
+import { clearLibrary } from "@/lib/backup";
 import { clearTmdbApiKey, saveTmdbApiKey } from "@/lib/settings";
+import { redirect, unstable_rethrow } from "next/navigation";
 
 export async function matchByTmdbId(fileId: string, tmdbId: number) {
   await requireAdmin();
@@ -104,20 +105,59 @@ export async function hideMovieAction(movieId: string, hidden: boolean) {
   revalidatePath(`/admin/movies/${movieId}`);
 }
 
-export async function updateMovieAction(movieId: string, formData: FormData) {
+export async function updateMovieAction(
+  movieId: string,
+  _prev: { error?: string; ok?: boolean } | undefined,
+  formData: FormData,
+): Promise<{ error?: string; ok?: boolean }> {
   await requireAdmin();
-  await updateMovie(movieId, {
-    title: String(formData.get("title") ?? ""),
-    year: String(formData.get("year") ?? ""),
-    overview: String(formData.get("overview") ?? ""),
-  });
-  const tmdb = String(formData.get("tmdb") ?? "").trim();
-  if (tmdb) {
-    await relinkMovieFromTmdb(movieId, tmdb);
+  try {
+    const fileId = String(formData.get("fileId") ?? "").trim() || null;
+    const result = await saveMovieVersion({
+      movieId,
+      fileId,
+      title: String(formData.get("title") ?? ""),
+      year: String(formData.get("year") ?? ""),
+      overview: String(formData.get("overview") ?? ""),
+      tmdb: String(formData.get("tmdb") ?? ""),
+    });
+    revalidateLibrary();
+    revalidatePath(`/movies/${result.movieId}`);
+    revalidatePath(`/admin/movies/${result.movieId}`);
+    if (result.movieId !== movieId) {
+      revalidatePath(`/movies/${movieId}`);
+      revalidatePath(`/admin/movies/${movieId}`);
+      redirect(
+        fileId
+          ? `/admin/movies/${result.movieId}?v=${fileId}`
+          : `/admin/movies/${result.movieId}`,
+      );
+    }
+    return { ok: true };
+  } catch (error) {
+    unstable_rethrow(error);
+    return { error: error instanceof Error ? error.message : "Could not save movie." };
   }
-  revalidateLibrary();
-  revalidatePath(`/movies/${movieId}`);
-  revalidatePath(`/admin/movies/${movieId}`);
+}
+
+export async function clearLibraryAction(
+  _prev: { error?: string; ok?: boolean } | undefined,
+  formData: FormData,
+): Promise<{ error?: string; ok?: boolean }> {
+  await requireAdmin();
+  try {
+    const confirm = String(formData.get("confirm") ?? "").trim();
+    if (confirm !== "CLEAR") {
+      return { error: "Type CLEAR to confirm wiping the library." };
+    }
+    await clearLibrary();
+    revalidateLibrary();
+    revalidatePath("/movies");
+    return { ok: true };
+  } catch (error) {
+    unstable_rethrow(error);
+    return { error: error instanceof Error ? error.message : "Could not clear the database." };
+  }
 }
 
 export async function deleteMovieAction(movieId: string) {

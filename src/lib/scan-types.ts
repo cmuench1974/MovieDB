@@ -1,5 +1,5 @@
 export type ScanStatus = "idle" | "running" | "paused" | "completed" | "failed" | "cancelled";
-export type ScanPhase = "idle" | "listing" | "matching";
+export type ScanPhase = "idle" | "listing" | "matching" | "probing";
 
 export type ScanProgress = {
   status: ScanStatus;

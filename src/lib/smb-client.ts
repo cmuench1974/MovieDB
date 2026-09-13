@@ -1,4 +1,5 @@
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
+import { createWriteStream } from "node:fs";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -153,6 +154,70 @@ async function trySmbBridge(connection: SmbConnection, remoteDir: string): Promi
   }
 }
 
+type BridgeProbeResult =
+  | { ok: true; buffer: Buffer }
+  | { ok: false; unreachable: true; error?: unknown }
+  | { ok: false; unreachable: false; error: unknown };
+
+async function trySmbBridgeProbe(
+  connection: SmbConnection,
+  remoteFile: string,
+  maxBytes: number,
+): Promise<BridgeProbeResult> {
+  const baseUrl = process.env.SMB_BRIDGE_URL?.trim();
+  const token = process.env.SMB_BRIDGE_TOKEN?.trim();
+  if (!baseUrl || !token) return { ok: false, unreachable: true };
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 45_000);
+  try {
+    const response = await fetch(`${baseUrl.replace(/\/$/, "")}/probe`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        host: connection.host,
+        share: connection.share,
+        file: remoteFile,
+        maxBytes,
+      }),
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      let detail = `SMB bridge HTTP ${response.status}`;
+      try {
+        const payload = (await response.json()) as { error?: string };
+        if (payload.error) detail = payload.error;
+      } catch {
+        // Binary error bodies are ignored.
+      }
+      const error = new Error(detail);
+      if (response.status === 401 || response.status === 404) {
+        return { ok: false, unreachable: true, error };
+      }
+      return { ok: false, unreachable: false, error };
+    }
+    const buffer = Buffer.from(await response.arrayBuffer());
+    if (buffer.length < 16) {
+      return { ok: false, unreachable: false, error: new Error("SMB bridge returned too little file data.") };
+    }
+    return { ok: true, buffer };
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      return {
+        ok: false,
+        unreachable: true,
+        error: new Error("Timed out reading a file through the Windows SMB bridge."),
+      };
+    }
+    return { ok: false, unreachable: true, error };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function smbListOnce(
   address: string,
   connection: SmbConnection,
@@ -181,8 +246,6 @@ async function smbListOnce(
     dialect,
     "-t",
     "20",
-    "-o",
-    "client min protocol=SMB2",
     "-c",
     command,
   ];
@@ -284,4 +347,213 @@ function sanitizeAuthValue(value: string): string {
 export function joinSmbPath(dir: string, name: string): string {
   if (!dir || dir === ".") return name;
   return `${dir.replace(/\\/g, "/")}/${name}`;
+}
+
+/**
+ * Streams a remote file to stdout so ffprobe can read the header and exit
+ * without downloading the whole movie.
+ */
+export async function spawnSmbGet(
+  connection: SmbConnection,
+  remoteFile: string,
+): Promise<{ child: ChildProcess; cleanup: () => Promise<void> }> {
+  const address = await resolveSmbHost(connection.host);
+  const authDir = await mkdtemp(path.join(tmpdir(), "moviedb-smb-get-"));
+  const authFile = path.join(authDir, "auth");
+  const authLines = [
+    `username = ${sanitizeAuthValue(connection.username)}`,
+    `password = ${sanitizeAuthValue(connection.password)}`,
+  ];
+  if (connection.domain) {
+    authLines.push(`domain = ${sanitizeAuthValue(connection.domain)}`);
+  }
+  await writeFile(authFile, `${authLines.join("\n")}\n`, { mode: 0o600 });
+
+  const remote = escapeSmbPath(remoteFile.replace(/\//g, "\\"));
+  const args = [
+    `//${address}/${connection.share}`,
+    "-A",
+    authFile,
+    "-E",
+    "-q",
+    "-m",
+    "SMB3",
+    "-t",
+    "20",
+    "-c",
+    `get "${remote}" -`,
+  ];
+  if (!connection.password) args.push("-N");
+
+  const child = spawn("/usr/bin/smbclient", args, {
+    stdio: ["ignore", "pipe", "pipe"],
+    env: { ...process.env, LC_ALL: "C" },
+  });
+
+  return {
+    child,
+    cleanup: async () => {
+      await rm(authDir, { recursive: true, force: true });
+    },
+  };
+}
+
+/**
+ * Holt nur den Dateianfang über SMB. smbclient schreibt sonst Statuszeilen
+ * auf stdout — die machen ffprobe mit pipe:0 kaputt.
+ */
+export async function smbGetProbeSample(
+  connection: SmbConnection,
+  remoteFile: string,
+  maxBytes = 32 * 1024 * 1024,
+): Promise<{ samplePath: string; cleanup: () => Promise<void> }> {
+  const sampleDir = await mkdtemp(path.join(tmpdir(), "moviedb-probe-"));
+  const samplePath = path.join(sampleDir, "sample");
+  const cleanup = async () => {
+    await rm(sampleDir, { recursive: true, force: true });
+  };
+
+  try {
+    const fromBridge = await trySmbBridgeProbe(connection, remoteFile, maxBytes);
+    if (fromBridge.ok) {
+      await writeFile(samplePath, stripPreamble(fromBridge.buffer));
+      return { samplePath, cleanup };
+    }
+    if (!fromBridge.unreachable) {
+      throw fromBridge.error instanceof Error
+        ? fromBridge.error
+        : new Error("Could not read the file through the Windows SMB bridge.");
+    }
+
+    const { child, cleanup: cleanupAuth } = await spawnSmbGet(connection, remoteFile);
+    const combinedCleanup = async () => {
+      child.kill("SIGKILL");
+      await cleanupAuth();
+      await cleanup();
+    };
+    try {
+      await writeProbeSample(child, samplePath, maxBytes);
+      return { samplePath, cleanup: combinedCleanup };
+    } catch (error) {
+      await combinedCleanup();
+      throw error;
+    }
+  } catch (error) {
+    await cleanup();
+    throw error;
+  }
+}
+
+function writeProbeSample(child: ChildProcess, samplePath: string, maxBytes: number): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (!child.stdout) {
+      reject(new Error("Could not stream the SMB file for probing."));
+      return;
+    }
+
+    const out = createWriteStream(samplePath);
+    let head = Buffer.alloc(0);
+    let started = false;
+    let written = 0;
+    let stderr = "";
+    let settled = false;
+    const preambleLimit = 256 * 1024;
+    let timer: NodeJS.Timeout;
+
+    const finish = (error?: Error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      child.kill("SIGKILL");
+      out.end(() => {
+        if (error) reject(error);
+        else resolve();
+      });
+    };
+
+    timer = setTimeout(() => {
+      if (written > 0) {
+        finish();
+        return;
+      }
+      finish(new Error("Timed out reading media metadata from the share."));
+    }, 45_000);
+
+    child.stderr?.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString("utf8");
+    });
+
+    child.stdout.on("data", (chunk: Buffer) => {
+      if (settled) return;
+      let payload = chunk;
+      if (!started) {
+        head = Buffer.concat([head, chunk]);
+        const offset = findMediaOffset(head);
+        if (offset < 0 && head.length < preambleLimit) return;
+        started = true;
+        payload = offset >= 0 ? head.subarray(offset) : head;
+        head = Buffer.alloc(0);
+      }
+
+      const remaining = maxBytes - written;
+      if (remaining <= 0) {
+        finish();
+        return;
+      }
+      if (payload.length > remaining) payload = payload.subarray(0, remaining);
+      written += payload.length;
+      if (!out.write(payload)) child.stdout?.pause();
+      if (written >= maxBytes) finish();
+    });
+
+    out.on("drain", () => {
+      child.stdout?.resume();
+    });
+    out.on("error", (error) => {
+      finish(error);
+    });
+
+    child.on("error", (error) => {
+      finish(
+        "code" in error && error.code === "ENOENT"
+          ? new Error(
+              "smbclient is missing in the container image. Rebuild with docker compose up --build.",
+            )
+          : error,
+      );
+    });
+
+    child.on("close", (code) => {
+      if (written > 0) {
+        finish();
+        return;
+      }
+      const detail = stderr.replace(/\s+/g, " ").trim();
+      finish(
+        new Error(
+          detail ||
+            (code
+              ? `smbclient exited with code ${code} before any video data arrived.`
+              : "No video data arrived from the share."),
+        ),
+      );
+    });
+  });
+}
+
+function findMediaOffset(buffer: Buffer): number {
+  const ebml = buffer.indexOf(Buffer.from([0x1a, 0x45, 0xdf, 0xa3]));
+  const ftyp = buffer.indexOf(Buffer.from("ftyp"));
+  const riff = buffer.indexOf(Buffer.from("RIFF"));
+  const candidates = [
+    ebml,
+    ftyp >= 4 ? ftyp - 4 : -1,
+    riff,
+  ].filter((value) => value >= 0);
+  return candidates.length ? Math.min(...candidates) : -1;
+}
+
+function stripPreamble(buffer: Buffer): Buffer {
+  const offset = findMediaOffset(buffer);
+  return offset > 0 ? buffer.subarray(offset) : buffer;
 }

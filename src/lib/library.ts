@@ -1,4 +1,4 @@
-import type { FolderKind, Prisma } from "@prisma/client";
+import { Prisma, type FolderKind } from "@prisma/client";
 import { prisma } from "./prisma";
 import { encryptSecret } from "./secrets";
 import {
@@ -9,6 +9,7 @@ import {
   parseSmbLocation,
 } from "./scanner";
 import { getMovieDetails, parseTmdbMovieId, yearFromReleaseDate } from "./tmdb";
+import { applyTmdbDetailsToMovie, upsertMovieFromTmdb } from "./tmdb-sync";
 
 export type FolderInput = {
   label: string;
@@ -102,16 +103,78 @@ export async function updateMovie(
   movieId: string,
   data: { title: string; year: string; overview: string },
 ) {
+  const editorial = parseEditorial(data);
+  await prisma.movie.update({
+    where: { id: movieId },
+    data: editorial,
+  });
+}
+
+export async function fillVersionEditorialFromMovie(fileId: string) {
+  const file = await prisma.videoFile.findUnique({
+    where: { id: fileId },
+    include: { movie: true },
+  });
+  if (!file?.movie || file.title) return;
+  await prisma.videoFile.update({
+    where: { id: fileId },
+    data: {
+      title: file.movie.title,
+      year: file.movie.year,
+      overview: file.movie.overview,
+    },
+  });
+}
+
+export async function saveMovieVersion(input: {
+  movieId: string;
+  fileId?: string | null;
+  title: string;
+  year: string;
+  overview: string;
+  tmdb?: string;
+}): Promise<{ movieId: string }> {
+  const editorial = parseEditorial({
+    title: input.title,
+    year: input.year,
+    overview: input.overview,
+  });
+  const tmdb = input.tmdb?.trim() ?? "";
+
+  if (input.fileId) {
+    const file = await prisma.videoFile.findUnique({ where: { id: input.fileId } });
+    if (!file || file.movieId !== input.movieId) {
+      throw new Error("That version does not belong to this movie.");
+    }
+    await prisma.videoFile.update({
+      where: { id: input.fileId },
+      data: editorial,
+    });
+  } else {
+    await prisma.movie.update({
+      where: { id: input.movieId },
+      data: editorial,
+    });
+  }
+
+  if (!tmdb) return { movieId: input.movieId };
+
+  if (!input.fileId) {
+    await relinkMovieFromTmdb(input.movieId, tmdb);
+    return { movieId: input.movieId };
+  }
+
+  return relinkMovieVersionFromTmdb(input.movieId, input.fileId, tmdb);
+}
+
+function parseEditorial(data: { title: string; year: string; overview: string }) {
   const title = data.title.trim();
   if (!title) throw new Error("Title cannot be empty.");
   const year = data.year.trim() ? Number(data.year) : null;
   if (data.year.trim() && (!Number.isInteger(year) || year! < 1880 || year! > 2100)) {
     throw new Error("Year must be a number such as 1999.");
   }
-  await prisma.movie.update({
-    where: { id: movieId },
-    data: { title, year, overview: data.overview.trim() || null },
-  });
+  return { title, year, overview: data.overview.trim() || null };
 }
 
 export async function relinkMovieFromTmdb(movieId: string, urlOrId: string) {
@@ -124,45 +187,58 @@ export async function relinkMovieFromTmdb(movieId: string, urlOrId: string) {
 
   const existing = await prisma.movie.findUnique({ where: { tmdbId } });
   if (existing && existing.id !== movieId) {
-    throw new Error("That TMDB title is already in the library.");
+    throw new Error("That TMDB title is already in the library. Move a version onto it instead.");
+  }
+
+  await applyTmdbDetailsToMovie(movieId, tmdbId);
+}
+
+async function relinkMovieVersionFromTmdb(
+  movieId: string,
+  fileId: string,
+  urlOrId: string,
+): Promise<{ movieId: string }> {
+  const tmdbId = parseTmdbMovieId(urlOrId);
+  if (!tmdbId) {
+    throw new Error(
+      "Please paste a TMDB movie URL such as https://www.themoviedb.org/movie/603-the-matrix",
+    );
   }
 
   const details = await getMovieDetails(tmdbId);
-  const genres = await Promise.all(
-    details.genres.map((genre) =>
-      prisma.genre.upsert({
-        where: { tmdbId: genre.id },
-        create: { tmdbId: genre.id, name: genre.name },
-        update: { name: genre.name },
-      }),
-    ),
-  );
+  const target = await upsertMovieFromTmdb(tmdbId);
 
-  await prisma.movie.update({
-    where: { id: movieId },
+  if (target.id === movieId) {
+    await applyTmdbDetailsToMovie(movieId, tmdbId);
+    await prisma.videoFile.update({
+      where: { id: fileId },
+      data: {
+        title: details.title,
+        year: yearFromReleaseDate(details.release_date),
+        overview: details.overview || null,
+      },
+    });
+    return { movieId };
+  }
+
+  await prisma.videoFile.update({
+    where: { id: fileId },
     data: {
-      tmdbId: details.id,
+      movieId: target.id,
+      status: "matched",
+      candidates: Prisma.DbNull,
       title: details.title,
-      originalTitle: details.original_title,
       year: yearFromReleaseDate(details.release_date),
-      overview: details.overview,
-      runtime: details.runtime,
-      voteAverage: details.vote_average,
-      posterPath: details.poster_path,
-      backdropPath: details.backdrop_path,
-      releaseDate: details.release_date,
-      cast: (details.credits?.cast ?? [])
-        .slice()
-        .sort((a, b) => a.order - b.order)
-        .slice(0, 8)
-        .map((member) => ({
-          name: member.name,
-          character: member.character,
-          profile_path: member.profile_path,
-        })) as unknown as Prisma.InputJsonValue,
-      genres: { set: genres.map((genre) => ({ id: genre.id })) },
+      overview: details.overview || null,
     },
   });
+
+  const remaining = await prisma.videoFile.count({ where: { movieId } });
+  if (remaining === 0) {
+    await prisma.movie.delete({ where: { id: movieId } });
+  }
+
+  return { movieId: target.id };
 }
 
 export async function deleteMovie(movieId: string) {

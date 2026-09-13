@@ -1,7 +1,9 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
+import { fillVersionEditorialFromMovie } from "./library";
 import { discoverVideoFiles } from "./scanner";
 import { normalizeTitle } from "./filename";
+import { probeVideoIfNeeded } from "./media-probe";
 import {
   beginScan,
   endScan,
@@ -9,15 +11,8 @@ import {
   updateScanProgress,
   yieldScanControl,
 } from "./scan-state";
-import {
-  getMovieDetails,
-  parseTmdbMovieId,
-  searchMovies,
-  yearFromReleaseDate,
-  type TmdbCandidate,
-  type TmdbCastMember,
-  type TmdbMovieDetails,
-} from "./tmdb";
+import { parseTmdbMovieId, searchMovies, yearFromReleaseDate, type TmdbCandidate } from "./tmdb";
+import { upsertMovieFromTmdb } from "./tmdb-sync";
 
 const SEARCH_DELAY_MS = 250;
 
@@ -87,16 +82,30 @@ async function executeScan(): Promise<void> {
         },
       });
 
+      const needsProbe =
+        !existing?.probedAt ||
+        existing.size !== video.size ||
+        Boolean(existing.probeError && !existing.probeError.includes("Disc images"));
+      if (needsProbe) {
+        updateScanProgress({ phase: "probing", currentFile: file.filename });
+        await probeVideoIfNeeded(video.id);
+        await yieldScanControl();
+      }
+
       // Already resolved files are left as-is on later scans.
       if (
         existing &&
         (existing.status === "matched" || existing.status === "ignored")
       ) {
         skipped += 1;
-        updateScanProgress({ skipped, processed });
+        if (existing.status === "matched" && !existing.title) {
+          await fillVersionEditorialFromMovie(video.id);
+        }
+        updateScanProgress({ phase: "matching", skipped, processed });
         continue;
       }
 
+      updateScanProgress({ phase: "matching", currentFile: file.filename });
       const result = await matchFromFilename(video.id, file.parsed.title, file.parsed.year);
       if (result === "matched") matched += 1;
       else if (result === "needs_review") needsReview += 1;
@@ -198,12 +207,16 @@ async function pacedDelay() {
 
 export async function matchFileToTmdb(fileId: string, tmdbId: number) {
   const movie = await upsertMovieFromTmdb(tmdbId);
+  const file = await prisma.videoFile.findUnique({ where: { id: fileId } });
   await prisma.videoFile.update({
     where: { id: fileId },
     data: {
       status: "matched",
       movieId: movie.id,
       candidates: Prisma.DbNull,
+      title: file?.title || movie.title,
+      year: file?.year ?? movie.year,
+      overview: file?.overview || movie.overview,
     },
   });
   return movie;
@@ -269,50 +282,4 @@ function isHighConfidence(
   const candidateYear = yearFromReleaseDate(candidate.release_date);
   const yearMatch = !parsedYear || !candidateYear || parsedYear === candidateYear;
   return titleMatch && yearMatch;
-}
-
-async function upsertMovieFromTmdb(tmdbId: number) {
-  const existing = await prisma.movie.findUnique({
-    where: { tmdbId },
-    include: { genres: true },
-  });
-  if (existing) return existing;
-
-  const details = await getMovieDetails(tmdbId);
-  const cast = snapshotCast(details);
-
-  return prisma.movie.create({
-    data: {
-      tmdbId: details.id,
-      title: details.title,
-      originalTitle: details.original_title,
-      year: yearFromReleaseDate(details.release_date),
-      overview: details.overview,
-      runtime: details.runtime,
-      voteAverage: details.vote_average,
-      posterPath: details.poster_path,
-      backdropPath: details.backdrop_path,
-      releaseDate: details.release_date,
-      cast: cast as unknown as Prisma.InputJsonValue,
-      genres: {
-        connectOrCreate: details.genres.map((genre) => ({
-          where: { tmdbId: genre.id },
-          create: { tmdbId: genre.id, name: genre.name },
-        })),
-      },
-    },
-    include: { genres: true },
-  });
-}
-
-function snapshotCast(details: TmdbMovieDetails): TmdbCastMember[] {
-  return (details.credits?.cast ?? [])
-    .slice()
-    .sort((a, b) => a.order - b.order)
-    .slice(0, 8)
-    .map((member) => ({
-      name: member.name,
-      character: member.character,
-      profile_path: member.profile_path,
-    }));
 }

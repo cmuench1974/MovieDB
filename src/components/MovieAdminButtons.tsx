@@ -8,10 +8,12 @@ export function MovieAdminButtons({
   movieId,
   hidden,
   title,
+  versionId,
 }: {
   movieId: string;
   hidden: boolean;
   title: string;
+  versionId?: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -33,7 +35,11 @@ export function MovieAdminButtons({
       <button
         type="button"
         disabled={pending}
-        onClick={() => router.push(`/admin/movies/${movieId}`)}
+        onClick={() =>
+          router.push(
+            versionId ? `/admin/movies/${movieId}?v=${versionId}` : `/admin/movies/${movieId}`,
+          )
+        }
         className="rounded-lg border border-zinc-700 px-3 py-1.5 text-sm text-zinc-200 hover:border-amber-400"
       >
         Edit

@@ -17,13 +17,25 @@ export default async function Home({ searchParams }: PageProps<"/">) {
     prisma.movie.findMany({
       where: {
         AND: [
-          query ? { title: { contains: query, mode: "insensitive" } } : {},
+          query
+            ? {
+                OR: [
+                  { title: { contains: query, mode: "insensitive" } },
+                  {
+                    videoFiles: {
+                      some: { title: { contains: query, mode: "insensitive" } },
+                    },
+                  },
+                ],
+              }
+            : {},
           genre ? { genres: { some: { id: genre } } } : {},
           year ? { year } : {},
           { hidden: false },
         ],
       },
       orderBy: { title: "asc" },
+      include: { videoFiles: { select: { resolutionClass: true } } },
     }),
     prisma.genre.findMany({
       where: { movies: { some: { hidden: false } } },

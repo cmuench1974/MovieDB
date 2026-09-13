@@ -5,6 +5,11 @@ export function formatRuntime(minutes?: number | null): string | null {
   return hours ? `${hours}h ${rest}m` : `${rest}m`;
 }
 
+export function formatRuntimeFromSeconds(seconds?: number | null): string | null {
+  if (seconds == null || seconds <= 0) return null;
+  return formatRuntime(Math.round(seconds / 60));
+}
+
 export function formatBytes(bytes: bigint | number): string {
   const value = typeof bytes === "bigint" ? Number(bytes) : bytes;
   if (!Number.isFinite(value) || value <= 0) return "0 B";

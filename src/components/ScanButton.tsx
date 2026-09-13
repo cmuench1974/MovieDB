@@ -146,7 +146,9 @@ export function ScanButton({ tmdbConfigured }: { tmdbConfigured: boolean }) {
                       ? "Finished"
                       : progress.phase === "listing"
                         ? "Listing files…"
-                        : "Matching titles…"}
+                        : progress.phase === "probing"
+                          ? "Reading media info…"
+                          : "Matching titles…"}
             </p>
             <p className="tabular-nums text-zinc-400">
               {progress.filesFound > 0
@@ -177,7 +179,7 @@ export function ScanButton({ tmdbConfigured }: { tmdbConfigured: boolean }) {
       ) : (
         <p className="text-xs text-zinc-500">
           {tmdbConfigured
-            ? "Large libraries can take a few minutes. You can pause or stop a running scan."
+            ? "Large libraries can take a few minutes, especially the first scan after an update (reading HD/UHD, HDR, audio, and subtitles). You can pause or stop a running scan."
             : "Save a TMDB API key above before scanning."}
         </p>
       )}

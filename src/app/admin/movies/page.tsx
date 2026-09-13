@@ -10,7 +10,14 @@ export default async function AdminMoviesPage({ searchParams }: PageProps<"/admi
   const query = typeof params.q === "string" ? params.q.trim() : "";
 
   const movies = await prisma.movie.findMany({
-    where: query ? { title: { contains: query, mode: "insensitive" } } : {},
+    where: query
+      ? {
+          OR: [
+            { title: { contains: query, mode: "insensitive" } },
+            { videoFiles: { some: { title: { contains: query, mode: "insensitive" } } } },
+          ],
+        }
+      : {},
     orderBy: { title: "asc" },
     include: { _count: { select: { videoFiles: true } } },
   });

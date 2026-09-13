@@ -16,7 +16,14 @@ RUN npx prisma generate && npm run build
 
 FROM node:22-bookworm-slim AS runner
 WORKDIR /app
-RUN apt-get update -y && apt-get install -y openssl smbclient && rm -rf /var/lib/apt/lists/*
+# pg_dump must match Postgres 16 (bookworm's default client is 15).
+RUN apt-get update -y && apt-get install -y --no-install-recommends \
+      openssl smbclient ffmpeg curl ca-certificates gnupg \
+    && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /usr/share/keyrings/postgresql.gpg \
+    && echo "deb [signed-by=/usr/share/keyrings/postgresql.gpg] http://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
+    && apt-get update -y \
+    && apt-get install -y --no-install-recommends postgresql-client-16 \
+    && rm -rf /var/lib/apt/lists/*
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000

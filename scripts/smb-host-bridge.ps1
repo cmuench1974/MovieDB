@@ -29,6 +29,15 @@ if (-not $token) {
   exit 1
 }
 
+function Send-Binary($Client, [byte[]]$Bytes) {
+  $header = "HTTP/1.1 200 OK`r`nContent-Type: application/octet-stream`r`nContent-Length: $($Bytes.Length)`r`nConnection: close`r`n`r`n"
+  $stream = $Client.GetStream()
+  $headerBytes = [System.Text.Encoding]::ASCII.GetBytes($header)
+  $stream.Write($headerBytes, 0, $headerBytes.Length)
+  $stream.Write($Bytes, 0, $Bytes.Length)
+  $stream.Flush()
+}
+
 function Send-Response($Client, [int]$Status, [string]$Body) {
   $bytes = [System.Text.Encoding]::UTF8.GetBytes($Body)
   $reason = switch ($Status) {
@@ -162,11 +171,7 @@ try {
         continue
       }
 
-      if ($pathOnly -ne "/list") {
-        Send-Response $client 404 '{"error":"not found"}'
-        continue
-      }
-
+      if ($pathOnly -eq "/list") {
       $hostName = $null
       $share = $null
       $folder = ""
@@ -197,6 +202,42 @@ try {
       }
       $payload = '{"entries":[' + ($jsonItems -join ",") + ']}'
       Send-Response $client 200 $payload
+      continue
+      }
+
+      if ($pathOnly -eq "/probe") {
+        if ($req.Method -ne "POST" -or -not $req.Body) {
+          Send-Response $client 400 '{"error":"POST a JSON body with host, share, and file."}'
+          continue
+        }
+        $json = $req.Body | ConvertFrom-Json
+        $hostName = [string]$json.host
+        $share = [string]$json.share
+        $relFile = [string]$json.file
+        $maxBytes = 32MB
+        if ($json.maxBytes) {
+          $requested = [int]$json.maxBytes
+          if ($requested -gt 0 -and $requested -le 64MB) { $maxBytes = $requested }
+        }
+        $unc = Get-UncPath $hostName $share $relFile
+        $fs = [System.IO.File]::Open($unc, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+        try {
+          $buf = New-Object byte[] $maxBytes
+          $read = $fs.Read($buf, 0, $maxBytes)
+          if ($read -le 0) { throw "File is empty." }
+          if ($read -lt $maxBytes) {
+            $trim = New-Object byte[] $read
+            [Array]::Copy($buf, $trim, $read)
+            $buf = $trim
+          }
+          Send-Binary $client $buf
+        } finally {
+          $fs.Close()
+        }
+        continue
+      }
+
+      Send-Response $client 404 '{"error":"not found"}'
     } catch {
       $msg = $_.Exception.Message.Replace('"', "'")
       Send-Response $client 400 (@{ error = $msg } | ConvertTo-Json -Compress)
