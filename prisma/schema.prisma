@@ -11,10 +11,20 @@ datasource db {
 }
 
 model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  passwordHash String
-  createdAt    DateTime @default(now())
+  id              String     @id @default(cuid())
+  username        String     @unique
+  email           String     @unique
+  passwordHash    String
+  role            UserRole   @default(user)
+  notifyNewMovies Boolean    @default(false)
+  createdAt       DateTime   @default(now())
+  lists           MovieList[]
+  listShares      MovieListShare[]
+}
+
+enum UserRole {
+  user
+  admin
 }
 
 enum MatchStatus {
@@ -53,6 +63,7 @@ model Movie {
   genres        Genre[]
   hidden        Boolean     @default(false)
   videoFiles    VideoFile[]
+  listItems     MovieListItem[]
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
 
@@ -132,4 +143,41 @@ model ScanJob {
 model AppSetting {
   key   String @id
   value String
+}
+
+model MovieList {
+  id        String           @id @default(cuid())
+  name      String
+  comment   String?
+  ownerId   String
+  owner     User             @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  items     MovieListItem[]
+  shares    MovieListShare[]
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  @@index([ownerId])
+}
+
+model MovieListItem {
+  id       String    @id @default(cuid())
+  listId   String
+  list     MovieList @relation(fields: [listId], references: [id], onDelete: Cascade)
+  movieId  String
+  movie    Movie     @relation(fields: [movieId], references: [id], onDelete: Cascade)
+  position Int       @default(0)
+  createdAt DateTime @default(now())
+
+  @@unique([listId, movieId])
+  @@index([movieId])
+}
+
+model MovieListShare {
+  listId String
+  list   MovieList @relation(fields: [listId], references: [id], onDelete: Cascade)
+  userId String
+  user   User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@id([listId, userId])
 }

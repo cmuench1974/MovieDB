@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { PosterImage } from "./PosterImage";
 import { MovieAdminButtons } from "./MovieAdminButtons";
+import { AddToListForm } from "./AddToListForm";
 import type { MovieVersionView } from "@/lib/movie-view";
 
 type MovieDetailProps = {
@@ -16,6 +17,8 @@ type MovieDetailProps = {
   versions: MovieVersionView[];
   initialVersionId: string | null;
   isAdmin: boolean;
+  isLoggedIn: boolean;
+  lists: { id: string; name: string }[];
   catalogTitle: string;
   catalogYear: number | null;
   catalogOverview: string | null;
@@ -31,6 +34,8 @@ export function MovieDetail({
   versions,
   initialVersionId,
   isAdmin,
+  isLoggedIn,
+  lists,
   catalogTitle,
   catalogYear,
   catalogOverview,
@@ -122,6 +127,8 @@ export function MovieDetail({
         ) : null}
 
         {version ? <VersionTech version={version} /> : null}
+
+        {isLoggedIn ? <AddToListForm movieId={movieId} lists={lists} /> : null}
 
         {isAdmin ? (
           <div className="mt-6">

@@ -13,6 +13,7 @@ import {
 } from "./scan-state";
 import { parseTmdbMovieId, searchMovies, yearFromReleaseDate, type TmdbCandidate } from "./tmdb";
 import { upsertMovieFromTmdb } from "./tmdb-sync";
+import { notifyUsersAboutNewMovies } from "./notify";
 
 const SEARCH_DELAY_MS = 250;
 
@@ -34,6 +35,7 @@ async function executeScan(): Promise<void> {
   let matched = 0;
   let needsReview = 0;
   let skipped = 0;
+  const newMovies = new Map<string, { id: string; title: string; year: number | null }>();
 
   try {
     updateScanProgress({ status: "running", phase: "listing", currentFile: null });
@@ -107,8 +109,16 @@ async function executeScan(): Promise<void> {
 
       updateScanProgress({ phase: "matching", currentFile: file.filename });
       const result = await matchFromFilename(video.id, file.parsed.title, file.parsed.year);
-      if (result === "matched") matched += 1;
-      else if (result === "needs_review") needsReview += 1;
+      if (result.status === "matched") {
+        matched += 1;
+        if (result.created && result.movie) {
+          newMovies.set(result.movie.id, {
+            id: result.movie.id,
+            title: result.movie.title,
+            year: result.movie.year,
+          });
+        }
+      } else if (result.status === "needs_review") needsReview += 1;
       else skipped += 1;
 
       updateScanProgress({ matched, needsReview, skipped, processed });
@@ -142,6 +152,14 @@ async function executeScan(): Promise<void> {
       error: errorMessage,
       folderErrors: errors,
     });
+
+    if (status === "completed" && newMovies.size > 0) {
+      try {
+        await notifyUsersAboutNewMovies([...newMovies.values()]);
+      } catch (error) {
+        console.error("Could not send new-movie notifications:", error);
+      }
+    }
   } catch (error) {
     if (error instanceof ScanStopped) {
       await prisma.scanJob.update({
@@ -206,7 +224,7 @@ async function pacedDelay() {
 }
 
 export async function matchFileToTmdb(fileId: string, tmdbId: number) {
-  const movie = await upsertMovieFromTmdb(tmdbId);
+  const { movie, created } = await upsertMovieFromTmdb(tmdbId);
   const file = await prisma.videoFile.findUnique({ where: { id: fileId } });
   await prisma.videoFile.update({
     where: { id: fileId },
@@ -219,7 +237,7 @@ export async function matchFileToTmdb(fileId: string, tmdbId: number) {
       overview: file?.overview || movie.overview,
     },
   });
-  return movie;
+  return { movie, created };
 }
 
 export async function matchFileByUrl(fileId: string, url: string) {
@@ -243,21 +261,25 @@ async function matchFromFilename(
   fileId: string,
   title: string,
   year: number | null,
-): Promise<"matched" | "needs_review" | "skipped"> {
+): Promise<{
+  status: "matched" | "needs_review" | "skipped";
+  created?: boolean;
+  movie?: { id: string; title: string; year: number | null };
+}> {
   if (!title) {
     await prisma.videoFile.update({
       where: { id: fileId },
       data: { status: "needs_review", candidates: [] },
     });
-    return "needs_review";
+    return { status: "needs_review" };
   }
 
   const candidates = await searchMovies(title, year);
   const confident = candidates.filter((item) => isHighConfidence(title, year, item));
 
   if (confident.length === 1) {
-    await matchFileToTmdb(fileId, confident[0].id);
-    return "matched";
+    const result = await matchFileToTmdb(fileId, confident[0].id);
+    return { status: "matched", created: result.created, movie: result.movie };
   }
 
   await prisma.videoFile.update({
@@ -267,7 +289,7 @@ async function matchFromFilename(
       candidates: candidates as unknown as Prisma.InputJsonValue,
     },
   });
-  return "needs_review";
+  return { status: "needs_review" };
 }
 
 function isHighConfidence(

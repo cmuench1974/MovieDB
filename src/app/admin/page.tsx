@@ -5,19 +5,23 @@ import { FolderForm } from "@/components/FolderForm";
 import { FolderList } from "@/components/FolderList";
 import { TmdbKeyForm } from "@/components/TmdbKeyForm";
 import { DatabaseTools } from "@/components/DatabaseTools";
+import { SmtpSettingsForm } from "@/components/SmtpSettingsForm";
 import { hasTmdbApiKey } from "@/lib/settings";
+import { getPublicSmtpSettings } from "@/lib/mail";
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminPage() {
-  const [movieCount, fileCount, reviewCount, lastJob, folders, tmdbConfigured] = await Promise.all([
+  const [movieCount, fileCount, reviewCount, lastJob, folders, tmdbConfigured, smtp] =
+    await Promise.all([
     prisma.movie.count(),
     prisma.videoFile.count(),
     prisma.videoFile.count({ where: { status: "needs_review" } }),
     prisma.scanJob.findFirst({ orderBy: { startedAt: "desc" } }),
     prisma.scanFolder.findMany({ orderBy: { createdAt: "asc" } }),
     hasTmdbApiKey(),
+    getPublicSmtpSettings(),
   ]);
 
   return (
@@ -75,6 +79,15 @@ export default async function AdminPage() {
           editing <code>.env</code>.
         </p>
         <TmdbKeyForm configured={tmdbConfigured} />
+      </section>
+
+      <section className="mt-8 rounded-xl border border-zinc-800 bg-zinc-900 p-5">
+        <h2 className="text-lg font-medium">Email</h2>
+        <p className="mt-2 mb-4 text-sm text-zinc-400">
+          SMTP is used for welcome emails when you create an account and for new-movie
+          notifications to users who opted in.
+        </p>
+        <SmtpSettingsForm settings={smtp} />
       </section>
 
       <DatabaseTools />

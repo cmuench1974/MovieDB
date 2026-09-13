@@ -31,7 +31,8 @@ export async function dumpDatabaseSql(): Promise<Buffer> {
 }
 
 export async function clearLibrary() {
-  // Keep admin users and the stored TMDB API key (AppSetting).
+  // Nutzer, SMTP-Einstellungen und TMDB-Schlüssel bleiben erhalten.
+  // Listeneinträge fallen mit den Filmen weg (Cascade), die Listen selbst bleiben.
   await prisma.$transaction([
     prisma.videoFile.deleteMany(),
     prisma.scanJob.deleteMany(),

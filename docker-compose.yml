@@ -25,6 +25,7 @@ services:
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@localhost}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-changeme-please}
       AUTH_SECRET: ${AUTH_SECRET}
+      AUTH_URL: ${AUTH_URL:-http://localhost:3000}
       AUTH_TRUST_HOST: "true"
       SCAN_PATHS: /media
       SMB_BRIDGE_URL: ${SMB_BRIDGE_URL:-http://smb-bridge:39221}

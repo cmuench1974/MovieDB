@@ -3,6 +3,7 @@ import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { MovieCard } from "@/components/MovieCard";
 import { Filters } from "@/components/Filters";
+import { auth } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +13,9 @@ export default async function Home({ searchParams }: PageProps<"/">) {
   const genre = typeof params.genre === "string" ? params.genre : "";
   const yearRaw = typeof params.year === "string" ? params.year : "";
   const year = yearRaw ? Number(yearRaw) : undefined;
+  const session = await auth();
+  const signedIn = Boolean(session?.user);
+  const visibility = signedIn ? {} : { hidden: false };
 
   const [movies, genres, years] = await Promise.all([
     prisma.movie.findMany({
@@ -31,18 +35,18 @@ export default async function Home({ searchParams }: PageProps<"/">) {
             : {},
           genre ? { genres: { some: { id: genre } } } : {},
           year ? { year } : {},
-          { hidden: false },
+          visibility,
         ],
       },
       orderBy: { title: "asc" },
       include: { videoFiles: { select: { resolutionClass: true } } },
     }),
     prisma.genre.findMany({
-      where: { movies: { some: { hidden: false } } },
+      where: { movies: { some: visibility } },
       orderBy: { name: "asc" },
     }),
     prisma.movie.findMany({
-      where: { hidden: false, year: { not: null } },
+      where: { ...visibility, year: { not: null } },
       select: { year: true },
       distinct: ["year"],
       orderBy: { year: "desc" },
@@ -78,7 +82,9 @@ export default async function Home({ searchParams }: PageProps<"/">) {
           <div className="rounded-xl border border-zinc-800 bg-zinc-900 px-6 py-16 text-center">
             <p className="text-zinc-300">No movies yet.</p>
             <p className="mt-2 text-sm text-zinc-500">
-              Sign in as admin to scan a folder and match files on TMDB.
+              {signedIn
+                ? "Ask an administrator to scan a folder and match files on TMDB."
+                : "Sign in as admin to scan a folder and match files on TMDB."}
             </p>
           </div>
         ) : (

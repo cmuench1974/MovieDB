@@ -12,8 +12,9 @@ export async function upsertMovieFromTmdb(tmdbId: number) {
     where: { tmdbId },
     include: { genres: true },
   });
-  if (existing) return existing;
-  return createMovieFromTmdb(tmdbId);
+  if (existing) return { movie: existing, created: false };
+  const movie = await createMovieFromTmdb(tmdbId);
+  return { movie, created: true };
 }
 
 export async function createMovieFromTmdb(tmdbId: number) {

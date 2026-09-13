@@ -23,7 +23,14 @@ async function main() {
         console.log(`Admin user ${email} already exists.`);
       } else {
         const passwordHash = await bcrypt.hash(password, 12);
-        await prisma.user.create({ data: { email, passwordHash } });
+        let username = (email.split("@")[0] || "admin")
+          .toLowerCase()
+          .replace(/[^a-z0-9_]/g, "_");
+        if (username.length < 3) username = `${username}_admin`;
+        username = username.slice(0, 32);
+        await prisma.user.create({
+          data: { email, username, passwordHash, role: "admin" },
+        });
         console.log(`Created admin user ${email}.`);
       }
     } else {

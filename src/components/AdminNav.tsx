@@ -2,7 +2,7 @@ import { logoutAction } from "@/app/admin/actions";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-export function AdminNav({ current }: { current: "scan" | "review" | "movies" }) {
+export function AdminNav({ current }: { current: "scan" | "review" | "movies" | "users" }) {
   return (
     <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
       <nav className="flex gap-2">
@@ -14,6 +14,9 @@ export function AdminNav({ current }: { current: "scan" | "review" | "movies" })
         </NavLink>
         <NavLink href="/admin/movies" active={current === "movies"}>
           Library
+        </NavLink>
+        <NavLink href="/admin/users" active={current === "users"}>
+          Users
         </NavLink>
         <NavLink href="/" active={false}>
           View catalog

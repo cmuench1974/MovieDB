@@ -7,6 +7,7 @@ type MovieCardMovie = {
   title: string;
   year: number | null;
   posterPath: string | null;
+  hidden?: boolean;
   videoFiles?: { resolutionClass: string | null }[];
 };
 
@@ -18,8 +19,13 @@ export function MovieCard({ movie }: { movie: MovieCardMovie }) {
       <div className="relative aspect-[2/3] overflow-hidden rounded-lg bg-zinc-800">
         <PosterImage path={movie.posterPath} alt={movie.title} />
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 transition group-hover:opacity-100" />
-        {badges.length > 0 ? (
+        {badges.length > 0 || movie.hidden ? (
           <div className="absolute top-2 right-2 flex flex-col items-end gap-1">
+            {movie.hidden ? (
+              <span className="rounded bg-amber-500/90 px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-zinc-950">
+                Hidden
+              </span>
+            ) : null}
             {badges.map((badge) => (
               <span
                 key={badge}

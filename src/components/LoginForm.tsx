@@ -3,16 +3,17 @@
 import { useActionState } from "react";
 import { loginAction } from "@/app/admin/actions";
 
-export function LoginForm() {
+export function LoginForm({ callbackUrl = "/" }: { callbackUrl?: string }) {
   const [state, formAction, pending] = useActionState(loginAction, undefined);
 
   return (
     <form action={formAction} className="space-y-4">
+      <input type="hidden" name="callbackUrl" value={callbackUrl} />
       <label className="block text-sm text-zinc-300">
-        Email
+        Email or username
         <input
           name="email"
-          type="email"
+          type="text"
           required
           autoComplete="username"
           className="mt-1 w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-zinc-100 outline-none focus:border-amber-400"

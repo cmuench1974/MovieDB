@@ -17,7 +17,17 @@ import { redirect, unstable_rethrow } from "next/navigation";
 
 export async function matchByTmdbId(fileId: string, tmdbId: number) {
   await requireAdmin();
-  await matchFileToTmdb(fileId, tmdbId);
+  const result = await matchFileToTmdb(fileId, tmdbId);
+  if (result.created) {
+    try {
+      const { notifyUsersAboutNewMovies } = await import("@/lib/notify");
+      await notifyUsersAboutNewMovies([
+        { id: result.movie.id, title: result.movie.title, year: result.movie.year },
+      ]);
+    } catch (error) {
+      console.error("Could not send new-movie notifications:", error);
+    }
+  }
   revalidatePath("/");
   revalidatePath("/admin");
   revalidatePath("/admin/review");
@@ -25,7 +35,17 @@ export async function matchByTmdbId(fileId: string, tmdbId: number) {
 
 export async function matchByUrl(fileId: string, url: string) {
   await requireAdmin();
-  await matchFileByUrl(fileId, url);
+  const result = await matchFileByUrl(fileId, url);
+  if (result.created) {
+    try {
+      const { notifyUsersAboutNewMovies } = await import("@/lib/notify");
+      await notifyUsersAboutNewMovies([
+        { id: result.movie.id, title: result.movie.title, year: result.movie.year },
+      ]);
+    } catch (error) {
+      console.error("Could not send new-movie notifications:", error);
+    }
+  }
   revalidatePath("/");
   revalidatePath("/admin");
   revalidatePath("/admin/review");
@@ -38,20 +58,26 @@ export async function ignoreVideoFile(fileId: string) {
   revalidatePath("/admin/review");
 }
 
+function safeRedirectPath(value: string): string {
+  if (value.startsWith("/") && !value.startsWith("//")) return value;
+  return "/";
+}
+
 export async function loginAction(_prev: { error?: string } | undefined, formData: FormData) {
   const email = String(formData.get("email") ?? "");
   const password = String(formData.get("password") ?? "");
+  const redirectTo = safeRedirectPath(String(formData.get("callbackUrl") ?? "/"));
 
   const { signIn } = await import("@/lib/auth");
   try {
     await signIn("credentials", {
       email,
       password,
-      redirectTo: "/admin",
+      redirectTo,
     });
   } catch (error) {
     if (error instanceof AuthError) {
-      return { error: "Invalid email or password." };
+      return { error: "Invalid username, email, or password." };
     }
     throw error;
   }
@@ -184,4 +210,45 @@ export async function clearTmdbKeyAction() {
   await requireAdmin();
   await clearTmdbApiKey();
   revalidatePath("/admin");
+}
+
+export async function saveSmtpSettingsAction(
+  _prev: { error?: string; ok?: boolean } | undefined,
+  formData: FormData,
+) {
+  await requireAdmin();
+  try {
+    const { saveSmtpSettings } = await import("@/lib/mail");
+    await saveSmtpSettings({
+      host: String(formData.get("host") ?? ""),
+      port: String(formData.get("port") ?? "587"),
+      secure: formData.get("secure") === "on",
+      username: String(formData.get("username") ?? ""),
+      password: String(formData.get("password") ?? ""),
+      from: String(formData.get("from") ?? ""),
+      siteUrl: String(formData.get("siteUrl") ?? ""),
+    });
+    revalidatePath("/admin");
+    return { ok: true, error: undefined };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "Could not save email settings.",
+    };
+  }
+}
+
+export async function sendTestEmailAction(): Promise<{ error?: string; ok?: boolean }> {
+  try {
+    const session = await requireAdmin();
+    const { sendTestMail } = await import("@/lib/mail");
+    const to = session.user.email;
+    if (!to) return { error: "Your account has no email address." };
+    await sendTestMail(to);
+    return { ok: true };
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : "Could not send the test email.",
+    };
+  }
 }

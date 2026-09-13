@@ -9,23 +9,28 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: [
     Credentials({
       credentials: {
-        email: { label: "Email", type: "email" },
+        email: { label: "Email or username", type: "text" },
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
-        const email = String(credentials.email ?? "")
-          .trim()
-          .toLowerCase();
+        const identifier = String(credentials.email ?? "").trim();
         const password = String(credentials.password ?? "");
-        if (!email || !password) return null;
+        if (!identifier || !password) return null;
 
-        const user = await prisma.user.findUnique({ where: { email } });
+        const user = identifier.includes("@")
+          ? await prisma.user.findUnique({ where: { email: identifier.toLowerCase() } })
+          : await prisma.user.findUnique({ where: { username: identifier.toLowerCase() } });
         if (!user) return null;
 
         const valid = await bcrypt.compare(password, user.passwordHash);
         if (!valid) return null;
 
-        return { id: user.id, email: user.email };
+        return {
+          id: user.id,
+          email: user.email,
+          username: user.username,
+          role: user.role,
+        };
       },
     }),
   ],

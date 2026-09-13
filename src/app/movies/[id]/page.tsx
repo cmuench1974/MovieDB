@@ -9,6 +9,8 @@ import { tmdbImageUrl } from "@/lib/tmdb-image";
 import { buildVersionViews, defaultVersionId } from "@/lib/movie-view";
 import type { TmdbCastMember } from "@/lib/tmdb";
 import { auth } from "@/lib/auth";
+import { getOwnedLists } from "@/lib/lists";
+import { isAdminSession } from "@/lib/admin";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +35,7 @@ export default async function MoviePage({
   const vote = formatVote(movie.voteAverage);
   const versions = buildVersionViews(movie, movie.videoFiles);
   const initialVersionId = defaultVersionId(movie.videoFiles, requestedVersion);
+  const lists = session?.user?.id ? await getOwnedLists(session.user.id) : [];
 
   return (
     <>
@@ -56,7 +59,9 @@ export default async function MoviePage({
             genres={movie.genres}
             versions={versions}
             initialVersionId={initialVersionId}
-            isAdmin={Boolean(session?.user)}
+            isAdmin={isAdminSession(session)}
+            isLoggedIn={Boolean(session?.user)}
+            lists={lists}
             catalogTitle={movie.title}
             catalogYear={movie.year}
             catalogOverview={movie.overview}

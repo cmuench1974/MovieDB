@@ -206,7 +206,7 @@ async function relinkMovieVersionFromTmdb(
   }
 
   const details = await getMovieDetails(tmdbId);
-  const target = await upsertMovieFromTmdb(tmdbId);
+  const { movie: target } = await upsertMovieFromTmdb(tmdbId);
 
   if (target.id === movieId) {
     await applyTmdbDetailsToMovie(movieId, tmdbId);
