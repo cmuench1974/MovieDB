@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState } from "react";
 import { updateMovieAction } from "@/app/admin/actions";
 import type { MovieVersionView } from "@/lib/movie-view";
@@ -94,13 +95,27 @@ export function EditMovieForm({
       ) : null}
       {state?.error ? <p className="text-sm text-red-400">{state.error}</p> : null}
       {state?.ok ? <p className="text-sm text-emerald-400">Saved.</p> : null}
-      <button
-        type="submit"
-        disabled={pending}
-        className="rounded-lg bg-amber-400 px-4 py-2 text-sm font-medium text-zinc-950 hover:bg-amber-300 disabled:opacity-60"
-      >
-        {pending ? "Saving…" : "Save changes"}
-      </button>
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="submit"
+          disabled={pending}
+          className="rounded-lg bg-amber-400 px-4 py-2 text-sm font-medium text-zinc-950 hover:bg-amber-300 disabled:opacity-60"
+        >
+          {pending ? "Saving…" : "Save changes"}
+        </button>
+        <Link
+          href="/admin/movies"
+          className="rounded-lg border border-zinc-700 px-4 py-2 text-sm text-zinc-200 hover:border-amber-400"
+        >
+          Back to Library
+        </Link>
+        <Link
+          href={`/?focus=${movieId}`}
+          className="rounded-lg border border-zinc-700 px-4 py-2 text-sm text-zinc-200 hover:border-amber-400"
+        >
+          Back to Catalog
+        </Link>
+      </div>
     </form>
   );
 }

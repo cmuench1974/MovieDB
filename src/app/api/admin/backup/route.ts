@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { dumpDatabaseSql } from "@/lib/backup";
+import { isAdminSession } from "@/lib/admin";
 
 export const runtime = "nodejs";
 
 export async function GET() {
   const session = await auth();
-  if (!session?.user) {
+  if (!isAdminSession(session)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

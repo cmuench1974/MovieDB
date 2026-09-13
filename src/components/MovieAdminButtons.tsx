@@ -9,11 +9,13 @@ export function MovieAdminButtons({
   hidden,
   title,
   versionId,
+  showEdit = true,
 }: {
   movieId: string;
   hidden: boolean;
   title: string;
   versionId?: string;
+  showEdit?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -32,18 +34,20 @@ export function MovieAdminButtons({
       >
         {hidden ? "Unhide" : "Hide"}
       </button>
-      <button
-        type="button"
-        disabled={pending}
-        onClick={() =>
-          router.push(
-            versionId ? `/admin/movies/${movieId}?v=${versionId}` : `/admin/movies/${movieId}`,
-          )
-        }
-        className="rounded-lg border border-zinc-700 px-3 py-1.5 text-sm text-zinc-200 hover:border-amber-400"
-      >
-        Edit
-      </button>
+      {showEdit ? (
+        <button
+          type="button"
+          disabled={pending}
+          onClick={() =>
+            router.push(
+              versionId ? `/admin/movies/${movieId}?v=${versionId}` : `/admin/movies/${movieId}`,
+            )
+          }
+          className="rounded-lg border border-zinc-700 px-3 py-1.5 text-sm text-zinc-200 hover:border-amber-400"
+        >
+          Edit
+        </button>
+      ) : null}
       <button
         type="button"
         disabled={pending}

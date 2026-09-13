@@ -2,12 +2,19 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { AdminNav } from "@/components/AdminNav";
 import { MovieAdminButtons } from "@/components/MovieAdminButtons";
+import { ScanButton } from "@/components/ScanButton";
+import { hasTmdbApiKey } from "@/lib/settings";
+import { CatalogScrollTo } from "@/components/CatalogScrollTo";
+import { movieDetailHref, movieTitleYearOrder, pathWithQuery } from "@/lib/navigation";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminMoviesPage({ searchParams }: PageProps<"/admin/movies">) {
   const params = await searchParams;
   const query = typeof params.q === "string" ? params.q.trim() : "";
+  const focusId = typeof params.focus === "string" ? params.focus : "";
+  const tmdbConfigured = await hasTmdbApiKey();
+  const from = pathWithQuery("/admin/movies", { q: query || undefined });
 
   const movies = await prisma.movie.findMany({
     where: query
@@ -18,7 +25,7 @@ export default async function AdminMoviesPage({ searchParams }: PageProps<"/admi
           ],
         }
       : {},
-    orderBy: { title: "asc" },
+    orderBy: movieTitleYearOrder,
     include: { _count: { select: { videoFiles: true } } },
   });
 
@@ -30,6 +37,17 @@ export default async function AdminMoviesPage({ searchParams }: PageProps<"/admi
         Hide a title from the public catalog, edit its details, or remove it from the database.
         Files on disk are never deleted.
       </p>
+
+      <section className="mt-6 rounded-xl border border-zinc-800 bg-zinc-900 p-5">
+        <h2 className="text-sm font-medium uppercase tracking-wide text-zinc-500">
+          Library metadata
+        </h2>
+        <p className="mt-2 mb-4 text-sm text-zinc-400">
+          Refresh TMDB title, overview, cast, and genres for every movie. Chosen posters stay as
+          they are.
+        </p>
+        <ScanButton tmdbConfigured={tmdbConfigured} showScan={false} showMetadata />
+      </section>
 
       <form className="mt-6 mb-6" action="/admin/movies">
         <label className="sr-only" htmlFor="library-search">
@@ -51,9 +69,18 @@ export default async function AdminMoviesPage({ searchParams }: PageProps<"/admi
       ) : (
         <ul className="divide-y divide-zinc-800 rounded-xl border border-zinc-800">
           {movies.map((movie) => (
-            <li key={movie.id} className="flex flex-wrap items-center justify-between gap-4 px-4 py-3">
+            <li
+              key={movie.id}
+              id={`movie-${movie.id}`}
+              className={`flex flex-wrap items-center justify-between gap-4 px-4 py-3 scroll-mt-8 ${
+                movie.id === focusId ? "bg-amber-400/10" : ""
+              }`}
+            >
               <div>
-                <Link href={`/movies/${movie.id}`} className="font-medium text-zinc-100 hover:text-amber-300">
+                <Link
+                  href={movieDetailHref(movie.id, from)}
+                  className="font-medium text-zinc-100 hover:text-amber-300"
+                >
                   {movie.title}
                 </Link>
                 <p className="text-xs text-zinc-500">
@@ -67,6 +94,7 @@ export default async function AdminMoviesPage({ searchParams }: PageProps<"/admi
           ))}
         </ul>
       )}
+      {focusId ? <CatalogScrollTo movieId={focusId} /> : null}
     </main>
   );
 }

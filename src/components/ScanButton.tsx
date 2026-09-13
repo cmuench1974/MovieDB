@@ -2,11 +2,12 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import type { ScanProgress } from "@/lib/scan-types";
+import type { ScanKind, ScanProgress } from "@/lib/scan-types";
 
 const idleProgress = (): ScanProgress => ({
   status: "idle",
   phase: "idle",
+  kind: "full",
   filesFound: 0,
   processed: 0,
   currentFile: null,
@@ -20,7 +21,15 @@ function isBusy(status: ScanProgress["status"]) {
   return status === "running" || status === "paused";
 }
 
-export function ScanButton({ tmdbConfigured }: { tmdbConfigured: boolean }) {
+export function ScanButton({
+  tmdbConfigured,
+  showScan = true,
+  showMetadata = true,
+}: {
+  tmdbConfigured: boolean;
+  showScan?: boolean;
+  showMetadata?: boolean;
+}) {
   const router = useRouter();
   const [progress, setProgress] = useState<ScanProgress>(idleProgress);
   const [error, setError] = useState<string | null>(null);
@@ -58,12 +67,16 @@ export function ScanButton({ tmdbConfigured }: { tmdbConfigured: boolean }) {
     }
   }, [progress.status, router]);
 
-  async function start() {
+  async function start(mode: ScanKind) {
     setError(null);
-    const response = await fetch("/api/admin/scan", { method: "POST" });
+    const response = await fetch("/api/admin/scan", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode }),
+    });
     const data = await response.json();
     if (!response.ok) {
-      setError(data.error || "Could not start the scan.");
+      setError(data.error || "Could not start the job.");
       return;
     }
     setProgress(data);
@@ -87,21 +100,43 @@ export function ScanButton({ tmdbConfigured }: { tmdbConfigured: boolean }) {
   const percent =
     progress.filesFound > 0
       ? Math.min(100, Math.round((progress.processed / progress.filesFound) * 100))
-      : busy && progress.phase === "listing"
+      : busy && (progress.phase === "listing" || progress.phase === "metadata")
         ? null
         : 0;
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={start}
-          disabled={!canStart}
-          className="rounded-lg bg-amber-400 px-4 py-2 text-sm font-medium text-zinc-950 hover:bg-amber-300 disabled:cursor-not-allowed disabled:bg-zinc-700 disabled:text-zinc-400 disabled:hover:bg-zinc-700"
-        >
-          Scan folders
-        </button>
+        {showScan ? (
+          <>
+            <button
+              type="button"
+              onClick={() => start("full")}
+              disabled={!canStart}
+              className="rounded-lg bg-amber-400 px-4 py-2 text-sm font-medium text-zinc-950 hover:bg-amber-300 disabled:cursor-not-allowed disabled:bg-zinc-700 disabled:text-zinc-400 disabled:hover:bg-zinc-700"
+            >
+              Scan folders
+            </button>
+            <button
+              type="button"
+              onClick={() => start("new")}
+              disabled={!canStart}
+              className="rounded-lg border border-zinc-600 px-4 py-2 text-sm text-zinc-100 hover:border-amber-400 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Scan new movies
+            </button>
+          </>
+        ) : null}
+        {showMetadata ? (
+          <button
+            type="button"
+            onClick={() => start("metadata")}
+            disabled={!canStart}
+            className="rounded-lg border border-zinc-600 px-4 py-2 text-sm text-zinc-100 hover:border-amber-400 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Update metadata
+          </button>
+        ) : null}
         {busy ? (
           <>
             {progress.status === "paused" ? (
@@ -135,21 +170,7 @@ export function ScanButton({ tmdbConfigured }: { tmdbConfigured: boolean }) {
       {busy || progress.status === "completed" || progress.status === "failed" || progress.status === "cancelled" ? (
         <div className="space-y-2">
           <div className="flex items-center justify-between gap-3 text-sm">
-            <p className="text-zinc-300">
-              {progress.status === "paused"
-                ? "Paused"
-                : progress.status === "cancelled"
-                  ? "Stopped"
-                  : progress.status === "failed"
-                    ? "Failed"
-                    : progress.status === "completed"
-                      ? "Finished"
-                      : progress.phase === "listing"
-                        ? "Listing files…"
-                        : progress.phase === "probing"
-                          ? "Reading media info…"
-                          : "Matching titles…"}
-            </p>
+            <p className="text-zinc-300">{statusLabel(progress)}</p>
             <p className="tabular-nums text-zinc-400">
               {progress.filesFound > 0
                 ? `${progress.processed} / ${progress.filesFound}`
@@ -172,15 +193,15 @@ export function ScanButton({ tmdbConfigured }: { tmdbConfigured: boolean }) {
               {progress.currentFile}
             </p>
           ) : null}
-          <p className="text-xs text-zinc-500">
-            {progress.matched} matched · {progress.needsReview} need review · {progress.skipped} skipped
-          </p>
+          <p className="text-xs text-zinc-500">{countsLabel(progress)}</p>
         </div>
       ) : (
         <p className="text-xs text-zinc-500">
-          {tmdbConfigured
-            ? "Large libraries can take a few minutes, especially the first scan after an update (reading HD/UHD, HDR, audio, and subtitles). You can pause or stop a running scan."
-            : "Save a TMDB API key above before scanning."}
+          {!tmdbConfigured
+            ? "Save a TMDB API key above before scanning."
+            : showScan
+              ? "Scan folders re-checks every file. Scan new movies only looks for files that are not in the library yet. Update metadata refreshes TMDB text, cast, and genres without changing posters."
+              : "Update metadata refreshes TMDB text, cast, and genres for every title. Chosen posters and backdrops stay as they are."}
         </p>
       )}
 
@@ -192,4 +213,26 @@ export function ScanButton({ tmdbConfigured }: { tmdbConfigured: boolean }) {
       ) : null}
     </div>
   );
+}
+
+function statusLabel(progress: ScanProgress) {
+  if (progress.status === "paused") return "Paused";
+  if (progress.status === "cancelled") return "Stopped";
+  if (progress.status === "failed") return "Failed";
+  if (progress.status === "completed") {
+    if (progress.kind === "metadata") return "Metadata updated";
+    if (progress.kind === "new") return "New files finished";
+    return "Finished";
+  }
+  if (progress.phase === "listing") return "Listing files…";
+  if (progress.phase === "probing") return "Reading media info…";
+  if (progress.phase === "metadata") return "Updating metadata…";
+  return "Matching titles…";
+}
+
+function countsLabel(progress: ScanProgress) {
+  if (progress.kind === "metadata") {
+    return `${progress.matched} updated · ${progress.skipped} failed`;
+  }
+  return `${progress.matched} matched · ${progress.needsReview} need review · ${progress.skipped} skipped`;
 }

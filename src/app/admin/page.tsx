@@ -34,7 +34,12 @@ export default async function AdminPage() {
 
       <dl className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-4">
         <Stat label="Movies" value={movieCount} href="/admin/movies" />
-        <Stat label="Video files" value={fileCount} />
+        <Stat
+          label="Video files"
+          value={fileCount}
+          href="/admin/files"
+          highlight={movieCount !== fileCount}
+        />
         <Stat
           label="Need review"
           value={reviewCount}
@@ -84,8 +89,8 @@ export default async function AdminPage() {
       <section className="mt-8 rounded-xl border border-zinc-800 bg-zinc-900 p-5">
         <h2 className="text-lg font-medium">Email</h2>
         <p className="mt-2 mb-4 text-sm text-zinc-400">
-          SMTP is used for welcome emails when you create an account and for new-movie
-          notifications to users who opted in.
+          SMTP is used for welcome emails (optional site guide), account notices when you create a
+          user, and new-movie notifications to users who opted in.
         </p>
         <SmtpSettingsForm settings={smtp} />
       </section>
@@ -94,9 +99,12 @@ export default async function AdminPage() {
 
       <section className="mt-8 rounded-xl border border-zinc-800 bg-zinc-900 p-5">
         <h2 className="text-lg font-medium">Scan</h2>
-        <div className="mt-4">
-          <ScanButton tmdbConfigured={tmdbConfigured} />
-        </div>
+        <p className="mt-2 mb-4 text-sm text-zinc-400">
+          Scan folders re-checks every file (including media info). Scan new movies only adds files
+          that are not in the library yet. Update metadata refreshes TMDB details for titles you
+          already have.
+        </p>
+        <ScanButton tmdbConfigured={tmdbConfigured} />
       </section>
     </main>
   );
@@ -106,11 +114,16 @@ function Stat({
   label,
   value,
   href,
+  highlight = false,
 }: {
   label: string;
   value: string | number;
   href?: string;
+  highlight?: boolean;
 }) {
+  const className = `rounded-xl border p-4 ${
+    highlight ? "border-amber-400/60 bg-amber-400/5" : "border-zinc-800 bg-zinc-900"
+  }`;
   const content = (
     <>
       <dt className="text-xs uppercase tracking-wide text-zinc-500">{label}</dt>
@@ -120,16 +133,11 @@ function Stat({
 
   if (href) {
     return (
-      <Link
-        href={href}
-        className="rounded-xl border border-zinc-800 bg-zinc-900 p-4 hover:border-amber-400"
-      >
+      <Link href={href} className={`${className} hover:border-amber-400`}>
         {content}
       </Link>
     );
   }
 
-  return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">{content}</div>
-  );
+  return <div className={className}>{content}</div>;
 }

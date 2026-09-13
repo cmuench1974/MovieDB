@@ -23,6 +23,8 @@ type MovieDetailProps = {
   catalogYear: number | null;
   catalogOverview: string | null;
   catalogRuntime: string | null;
+  backHref: string;
+  returnPath: string;
 };
 
 export function MovieDetail({
@@ -40,6 +42,8 @@ export function MovieDetail({
   catalogYear,
   catalogOverview,
   catalogRuntime,
+  backHref,
+  returnPath,
 }: MovieDetailProps) {
   const router = useRouter();
   const fallback = versions[0] ?? null;
@@ -49,7 +53,10 @@ export function MovieDetail({
 
   function selectVersion(id: string) {
     setVersionId(id);
-    router.replace(`?v=${id}`, { scroll: false });
+    const params = new URLSearchParams();
+    params.set("v", id);
+    if (returnPath !== "/") params.set("from", returnPath);
+    router.replace(`?${params.toString()}`, { scroll: false });
   }
 
   return (
@@ -58,12 +65,13 @@ export function MovieDetail({
         <PosterImage path={posterPath} alt={title} size="w500" />
       </div>
       <div className="flex flex-col justify-center">
-        <p className="text-sm text-zinc-400">
-          <Link href="/" className="hover:text-zinc-200">
-            Catalog
-          </Link>
-        </p>
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight md:text-4xl">{title}</h1>
+        <Link
+          href={backHref}
+          className="inline-flex w-fit rounded-lg border border-zinc-700 px-4 py-2 text-sm text-zinc-200 hover:border-amber-400"
+        >
+          Back
+        </Link>
+        <h1 className="mt-4 text-3xl font-semibold tracking-tight md:text-4xl">{title}</h1>
         {hidden ? (
           <p className="mt-2 text-sm text-amber-400">Hidden from the public catalog.</p>
         ) : null}

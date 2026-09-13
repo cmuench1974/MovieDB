@@ -11,8 +11,9 @@ import {
   saveMovieVersion,
   setMovieHidden,
 } from "@/lib/library";
-import { clearLibrary } from "@/lib/backup";
+import { clearLibrary, restoreDatabaseSql } from "@/lib/backup";
 import { clearTmdbApiKey, saveTmdbApiKey } from "@/lib/settings";
+import { refreshMovieMetadata, setMovieArt } from "@/lib/tmdb-sync";
 import { redirect, unstable_rethrow } from "next/navigation";
 
 export async function matchByTmdbId(fileId: string, tmdbId: number) {
@@ -93,6 +94,7 @@ function revalidateLibrary() {
   revalidatePath("/admin");
   revalidatePath("/admin/review");
   revalidatePath("/admin/movies");
+  revalidatePath("/admin/files");
 }
 
 export async function addFolderAction(_prev: { error?: string } | undefined, formData: FormData) {
@@ -166,6 +168,31 @@ export async function updateMovieAction(
   }
 }
 
+export async function setMovieArtAction(movieId: string, kind: "poster" | "backdrop", path: string) {
+  await requireAdmin();
+  await setMovieArt(movieId, kind, path);
+  revalidateLibrary();
+  revalidatePath(`/movies/${movieId}`);
+  revalidatePath(`/admin/movies/${movieId}`);
+}
+
+export async function refreshMovieMetadataAction(
+  movieId: string,
+): Promise<{ error?: string; ok?: boolean }> {
+  await requireAdmin();
+  try {
+    await refreshMovieMetadata(movieId);
+    revalidateLibrary();
+    revalidatePath(`/movies/${movieId}`);
+    revalidatePath(`/admin/movies/${movieId}`);
+    return { ok: true };
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : "Could not refresh metadata.",
+    };
+  }
+}
+
 export async function clearLibraryAction(
   _prev: { error?: string; ok?: boolean } | undefined,
   formData: FormData,
@@ -183,6 +210,36 @@ export async function clearLibraryAction(
   } catch (error) {
     unstable_rethrow(error);
     return { error: error instanceof Error ? error.message : "Could not clear the database." };
+  }
+}
+
+export async function restoreLibraryAction(
+  _prev: { error?: string; ok?: boolean } | undefined,
+  formData: FormData,
+): Promise<{ error?: string; ok?: boolean }> {
+  await requireAdmin();
+  try {
+    const confirm = String(formData.get("confirm") ?? "").trim();
+    if (confirm !== "RESTORE") {
+      return { error: "Type RESTORE to confirm replacing the database." };
+    }
+    const file = formData.get("backup");
+    if (!(file instanceof File) || file.size === 0) {
+      return { error: "Choose a .sql backup file downloaded from this page." };
+    }
+    if (file.size > 64 * 1024 * 1024) {
+      return { error: "Backup file is larger than 64 MB." };
+    }
+    await restoreDatabaseSql(await file.text());
+    revalidateLibrary();
+    revalidatePath("/");
+    revalidatePath("/admin");
+    revalidatePath("/lists");
+    revalidatePath("/account");
+    return { ok: true };
+  } catch (error) {
+    unstable_rethrow(error);
+    return { error: error instanceof Error ? error.message : "Could not restore the database." };
   }
 }
 
@@ -238,14 +295,38 @@ export async function saveSmtpSettingsAction(
   }
 }
 
-export async function sendTestEmailAction(): Promise<{ error?: string; ok?: boolean }> {
+function extractEmail(value: string): string {
+  const match = value.match(/[^\s<>"]+@[^\s<>"]+\.[^\s<>"]+/);
+  return match?.[0]?.replace(/[>,;]+$/, "") ?? "";
+}
+
+function isDeliverableEmail(value: string): boolean {
+  const email = value.trim();
+  if (!/^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(email)) return false;
+  return !email.toLowerCase().endsWith("@localhost");
+}
+
+export async function sendTestEmailAction(
+  to?: string,
+): Promise<{ error?: string; ok?: boolean; to?: string }> {
   try {
     const session = await requireAdmin();
-    const { sendTestMail } = await import("@/lib/mail");
-    const to = session.user.email;
-    if (!to) return { error: "Your account has no email address." };
-    await sendTestMail(to);
-    return { ok: true };
+    const { getSmtpSettings, sendTestMail } = await import("@/lib/mail");
+    const settings = await getSmtpSettings();
+    const candidates = [
+      typeof to === "string" ? to.trim() : "",
+      session.user.email ?? "",
+      extractEmail(settings?.from ?? ""),
+    ];
+    const recipient = candidates.find(isDeliverableEmail);
+    if (!recipient) {
+      return {
+        error:
+          "Enter a real recipient address. Addresses like admin@localhost are rejected by most SMTP servers.",
+      };
+    }
+    await sendTestMail(recipient);
+    return { ok: true, to: recipient };
   } catch (error) {
     return {
       error: error instanceof Error ? error.message : "Could not send the test email.",

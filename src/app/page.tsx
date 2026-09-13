@@ -3,7 +3,9 @@ import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { MovieCard } from "@/components/MovieCard";
 import { Filters } from "@/components/Filters";
+import { CatalogScrollTo } from "@/components/CatalogScrollTo";
 import { auth } from "@/lib/auth";
+import { movieTitleYearOrder, pathWithQuery } from "@/lib/navigation";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +15,7 @@ export default async function Home({ searchParams }: PageProps<"/">) {
   const genre = typeof params.genre === "string" ? params.genre : "";
   const yearRaw = typeof params.year === "string" ? params.year : "";
   const year = yearRaw ? Number(yearRaw) : undefined;
+  const focusId = typeof params.focus === "string" ? params.focus : "";
   const session = await auth();
   const signedIn = Boolean(session?.user);
   const visibility = signedIn ? {} : { hidden: false };
@@ -38,7 +41,7 @@ export default async function Home({ searchParams }: PageProps<"/">) {
           visibility,
         ],
       },
-      orderBy: { title: "asc" },
+      orderBy: movieTitleYearOrder,
       include: { videoFiles: { select: { resolutionClass: true } } },
     }),
     prisma.genre.findMany({
@@ -56,6 +59,11 @@ export default async function Home({ searchParams }: PageProps<"/">) {
   const yearOptions = years
     .map((item) => item.year)
     .filter((value): value is number => value != null);
+  const from = pathWithQuery("/", {
+    q: query || undefined,
+    genre: genre || undefined,
+    year: yearRaw || undefined,
+  });
 
   return (
     <>
@@ -90,13 +98,14 @@ export default async function Home({ searchParams }: PageProps<"/">) {
         ) : (
           <ul className="grid grid-cols-2 gap-5 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
             {movies.map((movie) => (
-              <li key={movie.id}>
-                <MovieCard movie={movie} />
+              <li key={movie.id} id={`movie-${movie.id}`} className="scroll-mt-8">
+                <MovieCard movie={movie} highlighted={movie.id === focusId} from={from} />
               </li>
             ))}
           </ul>
         )}
       </main>
+      {focusId ? <CatalogScrollTo movieId={focusId} /> : null}
       <Footer />
     </>
   );

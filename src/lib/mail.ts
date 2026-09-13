@@ -26,6 +26,41 @@ const DEFAULTS: SmtpSettings = {
   siteUrl: "",
 };
 
+/**
+ * Nodemailer `secure: true` ist implizites TLS (SMTPS, Port 465).
+ * Port 587/2525 erwartet STARTTLS (`secure: false`). Beides zu mischen
+ * erzeugt OpenSSL „wrong version number“.
+ */
+export function smtpTlsMode(port: number, secureFlag: boolean) {
+  if (port === 465) return { secure: true as const };
+  if (port === 587 || port === 2525) return { secure: false as const, requireTLS: true as const };
+  if (port === 25) return { secure: false as const };
+  return { secure: secureFlag, requireTLS: !secureFlag };
+}
+
+function formatSmtpError(error: unknown): Error {
+  const message = error instanceof Error ? error.message : String(error);
+  const lower = message.toLowerCase();
+  if (lower.includes("wrong version number") || message.includes("0A00010B") || lower.includes("ssl routines")) {
+    return new Error(
+      "TLS does not match this SMTP port. Use 587 with STARTTLS (leave implicit TLS off) or 465 with implicit TLS on.",
+    );
+  }
+  if (lower.includes("econnrefused")) {
+    return new Error("Could not connect to the SMTP host. Check the hostname and port.");
+  }
+  if (lower.includes("etimedout") || lower.includes("timeout")) {
+    return new Error("The SMTP server did not respond in time. Check host, port, and firewall.");
+  }
+  if (lower.includes("eauth") || lower.includes("invalid login") || lower.includes("authentication failed")) {
+    return new Error("SMTP login failed. Check username and password.");
+  }
+  if (lower.includes("self-signed") || lower.includes("unable to verify")) {
+    return new Error("The SMTP server certificate could not be verified.");
+  }
+  return error instanceof Error ? error : new Error(message);
+}
+
 export async function getSmtpSettings(): Promise<SmtpSettings | null> {
   const stored = await prisma.appSetting.findUnique({ where: { key: SMTP_KEY } });
   if (!stored?.value) return null;
@@ -39,10 +74,11 @@ export async function getSmtpSettings(): Promise<SmtpSettings | null> {
 
 export async function getPublicSmtpSettings(): Promise<PublicSmtpSettings> {
   const settings = await getSmtpSettings();
+  const port = settings?.port ?? 587;
   return {
     host: settings?.host ?? "",
-    port: settings?.port ?? 587,
-    secure: settings?.secure ?? false,
+    port,
+    secure: smtpTlsMode(port, settings?.secure ?? false).secure,
     username: settings?.username ?? "",
     from: settings?.from ?? "",
     siteUrl: settings?.siteUrl ?? "",
@@ -73,7 +109,7 @@ export async function saveSmtpSettings(input: {
   const settings: SmtpSettings = {
     host,
     port,
-    secure: input.secure,
+    secure: smtpTlsMode(port, input.secure).secure,
     username: input.username.trim(),
     password,
     from,
@@ -96,21 +132,26 @@ export async function sendMail(input: {
     throw new Error("Email is not configured. Add SMTP settings in Admin first.");
   }
 
+  const tls = smtpTlsMode(settings.port, settings.secure);
   const transporter = nodemailer.createTransport({
     host: settings.host,
     port: settings.port,
-    secure: settings.secure,
+    ...tls,
     auth: settings.username
       ? { user: settings.username, pass: settings.password }
       : undefined,
   });
 
-  await transporter.sendMail({
-    from: settings.from,
-    to: input.to,
-    subject: input.subject,
-    text: input.text,
-  });
+  try {
+    await transporter.sendMail({
+      from: settings.from,
+      to: input.to,
+      subject: input.subject,
+      text: input.text,
+    });
+  } catch (error) {
+    throw formatSmtpError(error);
+  }
 }
 
 export async function sendTestMail(to: string): Promise<void> {

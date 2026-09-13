@@ -4,7 +4,10 @@ import { prisma } from "@/lib/prisma";
 import { AdminNav } from "@/components/AdminNav";
 import { EditMovieForm } from "@/components/EditMovieForm";
 import { MovieAdminButtons } from "@/components/MovieAdminButtons";
+import { MovieArtPicker } from "@/components/MovieArtPicker";
+import { RefreshMetadataButton } from "@/components/RefreshMetadataButton";
 import { buildVersionViews, defaultVersionId } from "@/lib/movie-view";
+import { getMovieImages } from "@/lib/tmdb";
 
 export const dynamic = "force-dynamic";
 
@@ -23,23 +26,24 @@ export default async function EditMoviePage({
   const versions = buildVersionViews(movie, movie.videoFiles);
   const selectedId = defaultVersionId(movie.videoFiles, requestedVersion);
   const selected = versions.find((item) => item.id === selectedId) ?? null;
+  const images = await getMovieImages(movie.tmdbId).catch(() => ({
+    posters: [],
+    backdrops: [],
+  }));
 
   return (
     <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-8">
       <AdminNav current="movies" />
-      <p className="text-sm text-zinc-400">
-        <Link href="/admin/movies" className="hover:text-zinc-200">
-          Library
-        </Link>
-      </p>
-      <h1 className="mt-2 text-2xl font-semibold">Edit {selected?.title ?? movie.title}</h1>
-      <div className="mt-4 mb-8">
+      <h1 className="text-2xl font-semibold">Edit {selected?.title ?? movie.title}</h1>
+      <div className="mt-4 mb-8 flex flex-wrap items-start gap-3">
         <MovieAdminButtons
           movieId={movie.id}
           hidden={movie.hidden}
           title={selected?.title ?? movie.title}
           versionId={selected?.id}
+          showEdit={false}
         />
+        <RefreshMetadataButton movieId={movie.id} />
       </div>
 
       {versions.length > 1 ? (
@@ -70,6 +74,16 @@ export default async function EditMoviePage({
         version={selected}
         versionCount={versions.length}
       />
+
+      <div className="mt-8">
+        <MovieArtPicker
+          movieId={movie.id}
+          posterPath={movie.posterPath}
+          backdropPath={movie.backdropPath}
+          posters={images.posters}
+          backdrops={images.backdrops}
+        />
+      </div>
     </main>
   );
 }

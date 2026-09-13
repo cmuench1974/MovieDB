@@ -15,19 +15,29 @@ function formInput(formData: FormData) {
   };
 }
 
+function createFormInput(formData: FormData) {
+  return {
+    ...formInput(formData),
+    sendSiteGuide: formData.get("sendSiteGuide") === "on",
+  };
+}
+
 export async function createUserAction(
   _prev: { error?: string; warning?: string; ok?: boolean } | undefined,
   formData: FormData,
 ) {
   await requireAdmin();
   try {
-    const { mailError } = await createUser(formInput(formData));
+    const input = createFormInput(formData);
+    const { mailError } = await createUser(input);
     revalidatePath("/admin/users");
     return {
       ok: true,
       warning: mailError
         ? `User created, but the welcome email could not be sent: ${mailError}`
-        : undefined,
+        : input.sendSiteGuide
+          ? "User created. A welcome email with the site guide was sent."
+          : undefined,
       error: undefined,
     };
   } catch (error) {

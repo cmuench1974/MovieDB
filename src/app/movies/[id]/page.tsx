@@ -11,6 +11,7 @@ import type { TmdbCastMember } from "@/lib/tmdb";
 import { auth } from "@/lib/auth";
 import { getOwnedLists } from "@/lib/lists";
 import { isAdminSession } from "@/lib/admin";
+import { safeReturnPath, withMovieFocus } from "@/lib/navigation";
 
 export const dynamic = "force-dynamic";
 
@@ -36,6 +37,8 @@ export default async function MoviePage({
   const versions = buildVersionViews(movie, movie.videoFiles);
   const initialVersionId = defaultVersionId(movie.videoFiles, requestedVersion);
   const lists = session?.user?.id ? await getOwnedLists(session.user.id) : [];
+  const returnPath = safeReturnPath(typeof query.from === "string" ? query.from : undefined);
+  const backHref = withMovieFocus(returnPath, movie.id);
 
   return (
     <>
@@ -66,6 +69,8 @@ export default async function MoviePage({
             catalogYear={movie.year}
             catalogOverview={movie.overview}
             catalogRuntime={formatRuntime(movie.runtime)}
+            backHref={backHref}
+            returnPath={returnPath}
           />
         </section>
 

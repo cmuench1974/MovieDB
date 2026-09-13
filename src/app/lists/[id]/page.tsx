@@ -9,11 +9,16 @@ import { DeleteListButton } from "@/components/DeleteListButton";
 import { removeMovieFromListAction } from "@/app/lists/actions";
 import { getAccessibleList } from "@/lib/lists";
 import { listDirectoryUsers } from "@/lib/users";
+import { CatalogScrollTo } from "@/components/CatalogScrollTo";
 
 export const dynamic = "force-dynamic";
 
-export default async function ListDetailPage({ params }: PageProps<"/lists/[id]">) {
-  const [{ id }, session] = await Promise.all([params, requireUser()]);
+export default async function ListDetailPage({
+  params,
+  searchParams,
+}: PageProps<"/lists/[id]">) {
+  const [{ id }, query, session] = await Promise.all([params, searchParams, requireUser()]);
+  const focusId = typeof query.focus === "string" ? query.focus : "";
   const list = await getAccessibleList(id, session.user.id);
   if (!list) notFound();
 
@@ -54,8 +59,12 @@ export default async function ListDetailPage({ params }: PageProps<"/lists/[id]"
           ) : (
             <ul className="mt-4 grid grid-cols-2 gap-5 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
               {list.items.map((item) => (
-                <li key={item.id} className="relative">
-                  <MovieCard movie={item.movie} />
+                <li key={item.id} id={`movie-${item.movie.id}`} className="relative scroll-mt-8">
+                  <MovieCard
+                    movie={item.movie}
+                    highlighted={item.movie.id === focusId}
+                    from={`/lists/${list.id}`}
+                  />
                   {isOwner ? (
                     <form
                       action={removeMovieFromListAction.bind(null, list.id, item.movieId)}
@@ -90,6 +99,7 @@ export default async function ListDetailPage({ params }: PageProps<"/lists/[id]"
           </section>
         ) : null}
       </main>
+      {focusId ? <CatalogScrollTo movieId={focusId} /> : null}
       <Footer />
     </>
   );

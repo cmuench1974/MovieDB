@@ -2,6 +2,7 @@ import bcrypt from "bcryptjs";
 import type { UserRole } from "@prisma/client";
 import { prisma } from "./prisma";
 import { sendMail, siteUrlFromSettings } from "./mail";
+import { welcomeEmailBody } from "./site-guide";
 
 const MIN_PASSWORD_LENGTH = 8;
 const USERNAME_PATTERN = /^[a-z0-9_]{3,32}$/;
@@ -12,6 +13,7 @@ export type UserInput = {
   password?: string;
   role: string;
   notifyNewMovies: boolean;
+  sendSiteGuide?: boolean;
 };
 
 function normalizeUsername(value: string): string {
@@ -64,20 +66,17 @@ export async function createUser(input: UserInput) {
   let mailError: string | undefined;
   try {
     const site = await siteUrlFromSettings();
+    const includeGuide = Boolean(input.sendSiteGuide);
     await sendMail({
       to: user.email,
-      subject: "Your MovieDB account",
-      text: [
-        `Hello ${user.username},`,
-        "",
-        "An account was created for you on MovieDB.",
-        `Username: ${user.username}`,
-        `Email: ${user.email}`,
-        `Role: ${user.role}`,
-        "",
-        `Sign in at ${site}/login with the password your administrator set.`,
-        "The catalog can still be viewed without signing in.",
-      ].join("\n"),
+      subject: includeGuide ? "Your MovieDB account and how to use it" : "Your MovieDB account",
+      text: welcomeEmailBody({
+        username: user.username,
+        email: user.email,
+        role: user.role,
+        siteUrl: site,
+        includeGuide,
+      }),
     });
   } catch (error) {
     mailError = error instanceof Error ? error.message : "Could not send the welcome email.";
@@ -144,6 +143,62 @@ export async function deleteUser(userId: string, actorId: string) {
       throw new Error("You cannot delete the last administrator.");
     }
   }
+  await prisma.user.delete({ where: { id: userId } });
+}
+
+export async function updateOwnNotifications(userId: string, notifyNewMovies: boolean) {
+  await prisma.user.update({
+    where: { id: userId },
+    data: { notifyNewMovies },
+  });
+}
+
+export async function updateOwnCredentials(
+  userId: string,
+  input: { email: string; currentPassword: string; newPassword: string },
+) {
+  const email = normalizeEmail(input.email);
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new Error("Please enter a valid email address.");
+  }
+
+  const current = await prisma.user.findUnique({ where: { id: userId } });
+  if (!current) throw new Error("User not found.");
+
+  const valid = await bcrypt.compare(input.currentPassword, current.passwordHash);
+  if (!valid) throw new Error("Current password is incorrect.");
+
+  const clash = await prisma.user.findFirst({
+    where: { AND: [{ id: { not: userId } }, { email }] },
+  });
+  if (clash) throw new Error("That email is already in use.");
+
+  const data: { email: string; passwordHash?: string } = { email };
+  const nextPassword = input.newPassword.trim();
+  if (nextPassword) {
+    if (nextPassword.length < MIN_PASSWORD_LENGTH) {
+      throw new Error(`Password must be at least ${MIN_PASSWORD_LENGTH} characters.`);
+    }
+    data.passwordHash = await bcrypt.hash(nextPassword, 12);
+  }
+
+  return prisma.user.update({ where: { id: userId }, data });
+}
+
+export async function deleteOwnAccount(userId: string, currentPassword: string) {
+  const current = await prisma.user.findUnique({ where: { id: userId } });
+  if (!current) throw new Error("User not found.");
+
+  const valid = await bcrypt.compare(currentPassword, current.passwordHash);
+  if (!valid) throw new Error("Current password is incorrect.");
+
+  if (current.role === "admin") {
+    const admins = await prisma.user.count({ where: { role: "admin" } });
+    if (admins <= 1) {
+      throw new Error("You cannot delete the last administrator.");
+    }
+  }
+
   await prisma.user.delete({ where: { id: userId } });
 }
 

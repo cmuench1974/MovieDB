@@ -1,0 +1,16 @@
+---
+description: Keep the MovieDB site-guide email in sync with new user-facing features
+alwaysApply: true
+---
+
+# Site guide email
+
+`src/lib/site-guide.ts` is the source of truth for the optional welcome-email overview (user vs administrator).
+
+When you add, rename, or remove something people can see or do in the UI:
+
+1. Update the matching section in `src/lib/site-guide.ts` in the same change.
+2. Users get catalog, search, filters, details, versions, Back/focus, lists, account settings (email, password, notifications, delete account), and new-movie emails.
+3. Administrators get the user sections plus folders, scans, review, library edit/hide/art, users, SMTP, TMDB key, backup download/restore, and the Video files vs Movies overview.
+4. Write the guide in English (app UI language), short bullets, no internal implementation details.
+5. Do not mention passwords in the guide body; the welcome lines already say the admin set one.

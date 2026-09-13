@@ -18,7 +18,7 @@ export default async function AdminUsersPage() {
       <h1 className="text-2xl font-semibold">Users</h1>
       <p className="mt-2 text-sm text-zinc-400">
         Create accounts for administrators and regular users. Welcome emails are sent when SMTP is
-        configured.
+        configured. You can attach a role-specific site guide.
       </p>
 
       <section className="mt-8 rounded-xl border border-zinc-800 bg-zinc-900 p-5">

@@ -20,6 +20,9 @@ export async function Header({ query = "" }: { query?: string }) {
               <Link href="/lists" className="text-zinc-300 hover:text-amber-300">
                 Lists
               </Link>
+              <Link href="/account" className="text-zinc-300 hover:text-amber-300">
+                Account
+              </Link>
               {user.role === "admin" ? (
                 <Link href="/admin" className="text-zinc-300 hover:text-amber-300">
                   Admin

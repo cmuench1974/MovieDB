@@ -1,6 +1,6 @@
-import type { ScanPhase, ScanProgress, ScanStatus } from "./scan-types";
+import type { ScanKind, ScanPhase, ScanProgress, ScanStatus } from "./scan-types";
 
-export type { ScanPhase, ScanProgress, ScanStatus };
+export type { ScanKind, ScanPhase, ScanProgress, ScanStatus };
 
 export class ScanStopped extends Error {
   constructor() {
@@ -12,6 +12,7 @@ export class ScanStopped extends Error {
 const idleProgress = (): ScanProgress => ({
   status: "idle",
   phase: "idle",
+  kind: "full",
   filesFound: 0,
   processed: 0,
   currentFile: null,
@@ -36,11 +37,16 @@ export function isScanActive(): boolean {
   return active;
 }
 
-export function beginScan(): boolean {
+export function beginScan(kind: ScanKind = "full"): boolean {
   if (active) return false;
   active = true;
   control = "run";
-  progress = { ...idleProgress(), status: "running", phase: "listing" };
+  progress = {
+    ...idleProgress(),
+    status: "running",
+    kind,
+    phase: kind === "metadata" ? "metadata" : "listing",
+  };
   return true;
 }
 

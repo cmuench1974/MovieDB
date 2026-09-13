@@ -55,6 +55,18 @@ export function UserCreateForm() {
         <input name="notifyNewMovies" type="checkbox" className="accent-amber-400" />
         Notify this user by email when new movies are added
       </label>
+      <label className="flex items-start gap-2 text-sm text-zinc-300">
+        <input
+          name="sendSiteGuide"
+          type="checkbox"
+          defaultChecked
+          className="mt-0.5 accent-amber-400"
+        />
+        <span>
+          Email a site guide matching their group (user or administrator). It covers catalog, lists,
+          and — for admins — scanning, library, and accounts.
+        </span>
+      </label>
       {state?.error ? <p className="text-sm text-red-400">{state.error}</p> : null}
       {state?.ok ? (
         <p className="text-sm text-emerald-400">

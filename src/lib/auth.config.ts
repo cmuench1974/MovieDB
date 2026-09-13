@@ -35,7 +35,7 @@ export const authConfig = {
       if (pathname.startsWith("/admin") || pathname.startsWith("/api/admin")) {
         return !!auth;
       }
-      if (pathname.startsWith("/lists")) {
+      if (pathname.startsWith("/lists") || pathname.startsWith("/account")) {
         return !!auth;
       }
       return true;

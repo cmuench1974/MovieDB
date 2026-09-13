@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { PosterImage } from "./PosterImage";
+import { movieDetailHref } from "@/lib/navigation";
 import { labelForResolutionClass } from "@/lib/versions";
 
 type MovieCardMovie = {
@@ -11,11 +12,24 @@ type MovieCardMovie = {
   videoFiles?: { resolutionClass: string | null }[];
 };
 
-export function MovieCard({ movie }: { movie: MovieCardMovie }) {
+export function MovieCard({
+  movie,
+  highlighted = false,
+  from,
+}: {
+  movie: MovieCardMovie;
+  highlighted?: boolean;
+  from?: string;
+}) {
   const badges = uniqueResolutionBadges(movie.videoFiles ?? []);
 
   return (
-    <Link href={`/movies/${movie.id}`} className="group block">
+    <Link
+      href={movieDetailHref(movie.id, from)}
+      className={`group block rounded-lg ${
+        highlighted ? "ring-2 ring-amber-400 ring-offset-2 ring-offset-zinc-950" : ""
+      }`}
+    >
       <div className="relative aspect-[2/3] overflow-hidden rounded-lg bg-zinc-800">
         <PosterImage path={movie.posterPath} alt={movie.title} />
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 transition group-hover:opacity-100" />

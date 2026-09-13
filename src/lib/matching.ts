@@ -17,15 +17,15 @@ import { notifyUsersAboutNewMovies } from "./notify";
 
 const SEARCH_DELAY_MS = 250;
 
-export function startScan(): { started: boolean; error?: string } {
-  if (!beginScan()) {
-    return { started: false, error: "A scan is already running." };
+export function startScan(mode: "full" | "new" = "full"): { started: boolean; error?: string } {
+  if (!beginScan(mode)) {
+    return { started: false, error: "A scan or metadata update is already running." };
   }
-  void executeScan();
+  void executeScan(mode === "new");
   return { started: true };
 }
 
-async function executeScan(): Promise<void> {
+async function executeScan(onlyNew: boolean): Promise<void> {
   const job = await prisma.scanJob.create({
     data: { status: "running" },
   });
@@ -40,14 +40,20 @@ async function executeScan(): Promise<void> {
   try {
     updateScanProgress({ status: "running", phase: "listing", currentFile: null });
     const { files, errors } = await discoverVideoFiles();
-    filesFound = files.length;
+    const existingPaths = onlyNew
+      ? new Set(
+          (await prisma.videoFile.findMany({ select: { path: true } })).map((file) => file.path),
+        )
+      : null;
+    const queue = existingPaths ? files.filter((file) => !existingPaths.has(file.path)) : files;
+    filesFound = queue.length;
     updateScanProgress({
       phase: "matching",
       filesFound,
       folderErrors: errors,
     });
 
-    for (const file of files) {
+    for (const file of queue) {
       await yieldScanControl();
       processed += 1;
       updateScanProgress({

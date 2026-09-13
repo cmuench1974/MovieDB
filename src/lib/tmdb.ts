@@ -93,6 +93,40 @@ export async function getMovieDetails(tmdbId: number): Promise<TmdbMovieDetails>
   });
 }
 
+export type TmdbImageOption = {
+  file_path: string;
+  vote_average: number;
+  width: number;
+  height: number;
+  iso_639_1: string | null;
+};
+
+/** Poster- und Backdrop-Varianten eines TMDB-Titels, sortiert nach Bewertung. */
+export async function getMovieImages(tmdbId: number): Promise<{
+  posters: TmdbImageOption[];
+  backdrops: TmdbImageOption[];
+}> {
+  const data = await tmdbGet<{
+    posters?: TmdbImageOption[];
+    backdrops?: TmdbImageOption[];
+  }>(`/movie/${tmdbId}/images`, {
+    include_image_language: "en,null",
+  });
+
+  return {
+    posters: rankImages(data.posters ?? [], 24),
+    backdrops: rankImages(data.backdrops ?? [], 16),
+  };
+}
+
+function rankImages(items: TmdbImageOption[], limit: number): TmdbImageOption[] {
+  return items
+    .filter((item) => item.file_path)
+    .slice()
+    .sort((a, b) => (b.vote_average ?? 0) - (a.vote_average ?? 0))
+    .slice(0, limit);
+}
+
 /**
  * Accepts a TMDB movie URL or a numeric id.
  * Only themoviedb.org URLs are allowed — arbitrary hosts are rejected.

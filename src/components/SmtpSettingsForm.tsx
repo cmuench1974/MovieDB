@@ -4,11 +4,20 @@ import { useActionState, useState, useTransition } from "react";
 import { saveSmtpSettingsAction, sendTestEmailAction } from "@/app/admin/actions";
 import type { PublicSmtpSettings } from "@/lib/mail";
 
+function implicitTlsForPort(port: number, fallback: boolean) {
+  if (port === 465) return true;
+  if (port === 587 || port === 25 || port === 2525) return false;
+  return fallback;
+}
+
 export function SmtpSettingsForm({ settings }: { settings: PublicSmtpSettings }) {
   const [state, formAction, pending] = useActionState(saveSmtpSettingsAction, undefined);
   const [testMessage, setTestMessage] = useState<string | null>(null);
   const [testError, setTestError] = useState<string | null>(null);
   const [testing, startTest] = useTransition();
+  const [port, setPort] = useState(String(settings.port));
+  const [implicitTls, setImplicitTls] = useState(settings.secure);
+  const [testTo, setTestTo] = useState("");
 
   return (
     <form action={formAction} className="space-y-4">
@@ -30,7 +39,15 @@ export function SmtpSettingsForm({ settings }: { settings: PublicSmtpSettings })
             type="number"
             min={1}
             max={65535}
-            defaultValue={settings.port}
+            value={port}
+            onChange={(event) => {
+              const value = event.target.value;
+              setPort(value);
+              const nextPort = Number(value);
+              if (Number.isInteger(nextPort)) {
+                setImplicitTls(implicitTlsForPort(nextPort, implicitTls));
+              }
+            }}
             className="mt-1 w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-amber-400"
           />
         </label>
@@ -38,10 +55,11 @@ export function SmtpSettingsForm({ settings }: { settings: PublicSmtpSettings })
           <input
             name="secure"
             type="checkbox"
-            defaultChecked={settings.secure}
+            checked={implicitTls}
+            onChange={(event) => setImplicitTls(event.target.checked)}
             className="accent-amber-400"
           />
-          Use TLS (port 465)
+          Implicit TLS (port 465 only)
         </label>
         <label className="block text-sm text-zinc-300">
           SMTP username
@@ -84,8 +102,19 @@ export function SmtpSettingsForm({ settings }: { settings: PublicSmtpSettings })
       </div>
       <p className="text-xs text-zinc-500">
         Used for welcome emails and optional new-movie notifications. The password is stored
-        encrypted. {settings.configured ? "SMTP is already configured." : "No SMTP settings saved yet."}
+        encrypted. Port 587 (typical) uses STARTTLS — leave implicit TLS off. Port 465 starts TLS
+        immediately — check the box. Mixing the two causes a TLS version error.
+        {settings.configured ? " SMTP is already configured." : " No SMTP settings saved yet."}
       </p>
+      <label className="block text-sm text-zinc-300">
+        Send test to
+        <input
+          value={testTo}
+          onChange={(event) => setTestTo(event.target.value)}
+          placeholder="Defaults to a real From address, not admin@localhost"
+          className="mt-1 w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 outline-none focus:border-amber-400"
+        />
+      </label>
       {state?.error ? <p className="text-sm text-red-400">{state.error}</p> : null}
       {state?.ok ? <p className="text-sm text-emerald-400">Email settings saved.</p> : null}
       {testError ? <p className="text-sm text-red-400">{testError}</p> : null}
@@ -105,9 +134,9 @@ export function SmtpSettingsForm({ settings }: { settings: PublicSmtpSettings })
             setTestError(null);
             setTestMessage(null);
             startTest(async () => {
-              const result = await sendTestEmailAction();
+              const result = await sendTestEmailAction(testTo);
               if (result.error) setTestError(result.error);
-              else setTestMessage("Test email sent to your account address.");
+              else setTestMessage(`Test email sent to ${result.to}.`);
             });
           }}
           className="rounded-lg border border-zinc-700 px-4 py-2 text-sm text-zinc-300 hover:border-zinc-500 disabled:opacity-60"
