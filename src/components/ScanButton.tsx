@@ -25,17 +25,21 @@ export function ScanButton({
   tmdbConfigured,
   showScan = true,
   showMetadata = true,
+  showMedia,
 }: {
   tmdbConfigured: boolean;
   showScan?: boolean;
   showMetadata?: boolean;
+  showMedia?: boolean;
 }) {
   const router = useRouter();
   const [progress, setProgress] = useState<ScanProgress>(idleProgress);
   const [error, setError] = useState<string | null>(null);
 
   const busy = isBusy(progress.status);
-  const canStart = tmdbConfigured && !busy;
+  const mediaVisible = showMedia ?? showScan;
+  const canStartLibrary = tmdbConfigured && !busy;
+  const canStartFiles = !busy;
 
   useEffect(() => {
     let cancelled = false;
@@ -112,7 +116,7 @@ export function ScanButton({
             <button
               type="button"
               onClick={() => start("full")}
-              disabled={!canStart}
+              disabled={!canStartLibrary}
               className="rounded-lg bg-amber-400 px-4 py-2 text-sm font-medium text-zinc-950 hover:bg-amber-300 disabled:cursor-not-allowed disabled:bg-zinc-700 disabled:text-zinc-400 disabled:hover:bg-zinc-700"
             >
               Scan folders
@@ -120,18 +124,28 @@ export function ScanButton({
             <button
               type="button"
               onClick={() => start("new")}
-              disabled={!canStart}
+              disabled={!canStartLibrary}
               className="rounded-lg border border-zinc-600 px-4 py-2 text-sm text-zinc-100 hover:border-amber-400 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Scan new movies
             </button>
           </>
         ) : null}
+        {mediaVisible ? (
+          <button
+            type="button"
+            onClick={() => start("media")}
+            disabled={!canStartFiles}
+            className="rounded-lg border border-zinc-600 px-4 py-2 text-sm text-zinc-100 hover:border-amber-400 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Update file info
+          </button>
+        ) : null}
         {showMetadata ? (
           <button
             type="button"
             onClick={() => start("metadata")}
-            disabled={!canStart}
+            disabled={!canStartLibrary}
             className="rounded-lg border border-zinc-600 px-4 py-2 text-sm text-zinc-100 hover:border-amber-400 disabled:cursor-not-allowed disabled:opacity-50"
           >
             Update metadata
@@ -198,10 +212,10 @@ export function ScanButton({
       ) : (
         <p className="text-xs text-zinc-500">
           {!tmdbConfigured
-            ? "Save a TMDB API key above before scanning."
+            ? "Save a TMDB API key above before scanning folders or updating metadata. Update file info can run without it."
             : showScan
-              ? "Scan folders re-checks every file. Scan new movies only looks for files that are not in the library yet. Update metadata refreshes TMDB text, cast, and genres without changing posters."
-              : "Update metadata refreshes TMDB text, cast, and genres for every title. Chosen posters and backdrops stay as they are."}
+              ? "Scan folders re-checks every file. Scan new movies only looks for files that are not in the library yet. Update file info re-reads codec, HDR, audio, subtitles, filename, and size. Update metadata refreshes TMDB text, cast, directors, and genres without changing posters."
+              : "Update metadata refreshes TMDB text, cast, directors, and genres for every title. Chosen posters and backdrops stay as they are."}
         </p>
       )}
 
@@ -221,6 +235,7 @@ function statusLabel(progress: ScanProgress) {
   if (progress.status === "failed") return "Failed";
   if (progress.status === "completed") {
     if (progress.kind === "metadata") return "Metadata updated";
+    if (progress.kind === "media") return "File info updated";
     if (progress.kind === "new") return "New files finished";
     return "Finished";
   }
@@ -232,6 +247,9 @@ function statusLabel(progress: ScanProgress) {
 
 function countsLabel(progress: ScanProgress) {
   if (progress.kind === "metadata") {
+    return `${progress.matched} updated · ${progress.skipped} failed`;
+  }
+  if (progress.kind === "media") {
     return `${progress.matched} updated · ${progress.skipped} failed`;
   }
   return `${progress.matched} matched · ${progress.needsReview} need review · ${progress.skipped} skipped`;

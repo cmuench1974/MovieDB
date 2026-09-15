@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { Header } from "@/components/Header";
@@ -26,19 +27,34 @@ export default async function MoviePage({
     include: {
       genres: { orderBy: { name: "asc" } },
       videoFiles: { orderBy: { filename: "asc" } },
+      credits: {
+        include: { person: { select: { id: true, name: true } } },
+        orderBy: [{ billingOrder: "asc" }],
+      },
     },
   });
 
   if (!movie || (movie.hidden && !session?.user)) notFound();
 
   const backdrop = tmdbImageUrl(movie.backdropPath, "w780");
-  const cast = Array.isArray(movie.cast) ? (movie.cast as TmdbCastMember[]) : [];
+  const directors = movie.credits
+    .filter((credit) => credit.role === "director")
+    .map((credit) => credit.person);
+  const billedCast = movie.credits
+    .filter((credit) => credit.role === "actor")
+    .map((credit) => ({
+      id: credit.person.id,
+      name: credit.person.name,
+      character: credit.character,
+    }));
+  const jsonCast = Array.isArray(movie.cast) ? (movie.cast as TmdbCastMember[]) : [];
   const vote = formatVote(movie.voteAverage);
   const versions = buildVersionViews(movie, movie.videoFiles);
   const initialVersionId = defaultVersionId(movie.videoFiles, requestedVersion);
   const lists = session?.user?.id ? await getOwnedLists(session.user.id) : [];
   const returnPath = safeReturnPath(typeof query.from === "string" ? query.from : undefined);
   const backHref = withMovieFocus(returnPath, movie.id);
+  const personFrom = encodeURIComponent(`/movies/${movie.id}`);
 
   return (
     <>
@@ -71,15 +87,36 @@ export default async function MoviePage({
             catalogRuntime={formatRuntime(movie.runtime)}
             backHref={backHref}
             returnPath={returnPath}
+            directors={directors}
+            directorFallback={directors.length ? null : movie.directorName}
           />
         </section>
 
         <div className="mx-auto max-w-7xl px-4 py-10 space-y-10">
-          {cast.length > 0 ? (
+          {billedCast.length > 0 ? (
             <section>
               <h2 className="text-lg font-medium">Cast</h2>
               <ul className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
-                {cast.map((member) => (
+                {billedCast.map((member) => (
+                  <li key={member.id} className="text-sm">
+                    <Link
+                      href={`/people/${member.id}?from=${personFrom}`}
+                      className="text-zinc-100 hover:text-amber-300"
+                    >
+                      {member.name}
+                    </Link>
+                    {member.character ? (
+                      <p className="text-zinc-500">{member.character}</p>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : jsonCast.length > 0 ? (
+            <section>
+              <h2 className="text-lg font-medium">Cast</h2>
+              <ul className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
+                {jsonCast.map((member) => (
                   <li key={`${member.name}-${member.character}`} className="text-sm">
                     <p className="text-zinc-100">{member.name}</p>
                     <p className="text-zinc-500">{member.character}</p>

@@ -21,7 +21,14 @@ export async function getAccessibleList(listId: string, userId: string) {
         orderBy: { position: "asc" },
         include: {
           movie: {
-            select: { id: true, title: true, year: true, posterPath: true, hidden: true },
+            select: {
+              id: true,
+              title: true,
+              year: true,
+              directorName: true,
+              posterPath: true,
+              hidden: true,
+            },
           },
         },
       },
@@ -55,12 +62,14 @@ export async function listListsForUser(userId: string) {
 
 export async function createList(
   userId: string,
-  input: { name: string; comment: string; sharedUserIds: string[] },
+  input: { name: string; comment: string; sharedUserIds: string[]; movieId?: string },
 ) {
   const name = input.name.trim();
   if (!name) throw new Error("Please name the list.");
   const comment = parseComment(input.comment);
   const shareIds = await sanitizeShareIds(userId, input.sharedUserIds);
+  // Nur gültige Filme aus der Bibliothek übernehmen (z. B. von der Filmseite).
+  const movieId = await resolveListMovieId(input.movieId);
 
   return prisma.movieList.create({
     data: {
@@ -68,6 +77,7 @@ export async function createList(
       comment,
       ownerId: userId,
       shares: { create: shareIds.map((id) => ({ userId: id })) },
+      items: movieId ? { create: { movieId, position: 1 } } : undefined,
     },
   });
 }
@@ -134,6 +144,13 @@ export async function removeMovieFromList(listId: string, movieId: string, userI
     throw new Error("You can only change your own lists.");
   }
   await prisma.movieListItem.deleteMany({ where: { listId, movieId } });
+}
+
+async function resolveListMovieId(movieId: string | undefined): Promise<string | undefined> {
+  const id = movieId?.trim();
+  if (!id) return undefined;
+  const movie = await prisma.movie.findUnique({ where: { id }, select: { id: true } });
+  return movie?.id;
 }
 
 function parseComment(value: string): string | null {

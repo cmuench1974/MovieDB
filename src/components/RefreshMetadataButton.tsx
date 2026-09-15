@@ -28,7 +28,8 @@ export function RefreshMetadataButton({ movieId }: { movieId: string }) {
       </button>
       {ok ? (
         <p className="text-xs text-emerald-400">
-          Title, overview, cast, and genres were refreshed from TMDB. Poster and backdrop were kept.
+          Title, overview, cast, directors, and genres were refreshed from TMDB. Poster and backdrop
+          were kept.
         </p>
       ) : null}
       {error ? <p className="text-xs text-red-400">{error}</p> : null}

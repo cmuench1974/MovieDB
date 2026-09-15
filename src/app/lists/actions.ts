@@ -20,13 +20,19 @@ function listInput(formData: FormData) {
 }
 
 export async function createListAction(
+  movieId: string,
   _prev: { error?: string } | undefined,
   formData: FormData,
 ) {
   const session = await requireUser();
+  const initialMovieId = movieId.trim();
   try {
-    const list = await createList(session.user.id, listInput(formData));
+    const list = await createList(session.user.id, {
+      ...listInput(formData),
+      movieId: initialMovieId || undefined,
+    });
     revalidatePath("/lists");
+    if (initialMovieId) revalidatePath(`/movies/${initialMovieId}`);
     redirect(`/lists/${list.id}`);
   } catch (error) {
     unstable_rethrow(error);

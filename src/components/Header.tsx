@@ -3,7 +3,17 @@ import { auth } from "@/lib/auth";
 import { logoutAction } from "@/app/admin/actions";
 import { SearchBox } from "./SearchBox";
 
-export async function Header({ query = "" }: { query?: string }) {
+export async function Header({
+  query = "",
+  genre,
+  year,
+  personId,
+}: {
+  query?: string;
+  genre?: string;
+  year?: string;
+  personId?: string;
+}) {
   const session = await auth();
   const user = session?.user;
 
@@ -14,7 +24,7 @@ export async function Header({ query = "" }: { query?: string }) {
           Movie<span className="text-amber-400">DB</span>
         </Link>
         <div className="flex min-w-0 flex-1 items-center gap-3">
-          <SearchBox defaultValue={query} />
+          <SearchBox defaultValue={query} genre={genre} year={year} personId={personId} />
           {user ? (
             <nav className="flex shrink-0 items-center gap-3 text-sm">
               <Link href="/lists" className="text-zinc-300 hover:text-amber-300">

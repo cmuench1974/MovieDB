@@ -7,6 +7,7 @@ type MovieCardMovie = {
   id: string;
   title: string;
   year: number | null;
+  directorName?: string | null;
   posterPath: string | null;
   hidden?: boolean;
   videoFiles?: { resolutionClass: string | null }[];
@@ -55,7 +56,11 @@ export function MovieCard({
         <h2 className="line-clamp-2 text-sm font-medium text-zinc-100 group-hover:text-amber-300">
           {movie.title}
         </h2>
-        {movie.year ? <p className="text-xs text-zinc-500">{movie.year}</p> : null}
+        {movie.year || movie.directorName ? (
+          <p className="line-clamp-2 text-xs text-zinc-500">
+            {[movie.year, movie.directorName].filter(Boolean).join(" · ")}
+          </p>
+        ) : null}
       </div>
     </Link>
   );

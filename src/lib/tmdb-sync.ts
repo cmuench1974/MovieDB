@@ -14,6 +14,7 @@ import {
   updateScanProgress,
   yieldScanControl,
 } from "./scan-state";
+import { directorNameFromDetails, syncMovieCredits } from "./credits";
 
 export async function upsertMovieFromTmdb(tmdbId: number) {
   const existing = await prisma.movie.findUnique({
@@ -29,7 +30,7 @@ export async function createMovieFromTmdb(tmdbId: number) {
   const details = await getMovieDetails(tmdbId);
   const cast = snapshotCast(details);
 
-  return prisma.movie.create({
+  const movie = await prisma.movie.create({
     data: {
       tmdbId: details.id,
       title: details.title,
@@ -41,6 +42,7 @@ export async function createMovieFromTmdb(tmdbId: number) {
       posterPath: details.poster_path,
       backdropPath: details.backdrop_path,
       releaseDate: details.release_date,
+      directorName: directorNameFromDetails(details),
       cast: cast as unknown as Prisma.InputJsonValue,
       genres: {
         connectOrCreate: details.genres.map((genre) => ({
@@ -51,6 +53,8 @@ export async function createMovieFromTmdb(tmdbId: number) {
     },
     include: { genres: true },
   });
+  await syncMovieCredits(movie.id, details);
+  return movie;
 }
 
 export async function applyTmdbDetailsToMovie(
@@ -70,7 +74,7 @@ export async function applyTmdbDetailsToMovie(
     ),
   );
 
-  return prisma.movie.update({
+  const movie = await prisma.movie.update({
     where: { id: movieId },
     data: {
       tmdbId: details.id,
@@ -84,10 +88,13 @@ export async function applyTmdbDetailsToMovie(
         ? { posterPath: details.poster_path, backdropPath: details.backdrop_path }
         : {}),
       releaseDate: details.release_date,
+      directorName: directorNameFromDetails(details),
       cast: snapshotCast(details) as unknown as Prisma.InputJsonValue,
       genres: { set: genres.map((genre) => ({ id: genre.id })) },
     },
   });
+  await syncMovieCredits(movie.id, details);
+  return movie;
 }
 
 /** Aktualisiert TMDB-Texte/Cast, lässt ein manuell gewähltes Poster/Backdrop stehen. */

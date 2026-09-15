@@ -15,11 +15,15 @@ type ListValues = {
 export function ListForm({
   users,
   list,
+  movieId,
 }: {
   users: DirectoryUser[];
   list?: ListValues;
+  movieId?: string;
 }) {
-  const action = list ? updateListAction.bind(null, list.id) : createListAction;
+  const action = list
+    ? updateListAction.bind(null, list.id)
+    : createListAction.bind(null, movieId ?? "");
   const [state, formAction, pending] = useActionState(
     action as (
       prev: { error?: string; ok?: boolean } | undefined,

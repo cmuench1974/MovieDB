@@ -100,6 +100,7 @@ export async function clearLibrary() {
     prisma.scanJob.deleteMany(),
     prisma.scanFolder.deleteMany(),
     prisma.movie.deleteMany(),
+    prisma.person.deleteMany(),
     prisma.genre.deleteMany(),
   ]);
 }

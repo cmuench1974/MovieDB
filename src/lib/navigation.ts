@@ -3,7 +3,9 @@ function isAllowedReturnPath(pathname: string): boolean {
   return (
     pathname === "/" ||
     pathname === "/admin/movies" ||
-    /^\/lists\/[a-zA-Z0-9_-]+$/.test(pathname)
+    /^\/lists\/[a-zA-Z0-9_-]+$/.test(pathname) ||
+    /^\/people\/[a-zA-Z0-9_-]+$/.test(pathname) ||
+    /^\/movies\/[a-zA-Z0-9_-]+$/.test(pathname)
   );
 }
 

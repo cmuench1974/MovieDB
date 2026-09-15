@@ -1,6 +1,6 @@
 export type ScanStatus = "idle" | "running" | "paused" | "completed" | "failed" | "cancelled";
 export type ScanPhase = "idle" | "listing" | "matching" | "probing" | "metadata";
-export type ScanKind = "full" | "new" | "metadata";
+export type ScanKind = "full" | "new" | "metadata" | "media";
 
 export type ScanProgress = {
   status: ScanStatus;

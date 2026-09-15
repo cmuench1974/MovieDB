@@ -101,8 +101,9 @@ export default async function AdminPage() {
         <h2 className="text-lg font-medium">Scan</h2>
         <p className="mt-2 mb-4 text-sm text-zinc-400">
           Scan folders re-checks every file (including media info). Scan new movies only adds files
-          that are not in the library yet. Update metadata refreshes TMDB details for titles you
-          already have.
+          that are not in the library yet. Update file info re-reads codec, HDR, audio, subtitles,
+          filename, and size for files you already have. Update metadata refreshes TMDB details for
+          titles you already have.
         </p>
         <ScanButton tmdbConfigured={tmdbConfigured} />
       </section>

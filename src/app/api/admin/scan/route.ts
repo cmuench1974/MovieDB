@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { startScan } from "@/lib/matching";
+import { startMediaRefresh, startScan } from "@/lib/matching";
 import { startMetadataRefresh } from "@/lib/tmdb-sync";
 import { getScanProgress } from "@/lib/scan-state";
 
@@ -26,10 +26,21 @@ export async function POST(request: Request) {
   if (denied) return denied;
 
   const body = (await request.json().catch(() => null)) as { mode?: string } | null;
-  const mode = body?.mode === "new" ? "new" : body?.mode === "metadata" ? "metadata" : "full";
+  const mode =
+    body?.mode === "new"
+      ? "new"
+      : body?.mode === "metadata"
+        ? "metadata"
+        : body?.mode === "media"
+          ? "media"
+          : "full";
 
   const result =
-    mode === "metadata" ? startMetadataRefresh() : startScan(mode === "new" ? "new" : "full");
+    mode === "metadata"
+      ? startMetadataRefresh()
+      : mode === "media"
+        ? startMediaRefresh()
+        : startScan(mode === "new" ? "new" : "full");
   if (!result.started) {
     return NextResponse.json({ error: result.error, ...getScanProgress() }, { status: 409 });
   }

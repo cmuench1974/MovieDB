@@ -1,4 +1,4 @@
-import { getTmdbApiKey } from "./settings";
+import { fallbackTmdbApiKey, getTmdbApiKey } from "./settings";
 
 export type TmdbCandidate = {
   id: number;
@@ -11,8 +11,16 @@ export type TmdbCandidate = {
 };
 
 export type TmdbCastMember = {
+  id?: number;
   name: string;
   character: string;
+  profile_path: string | null;
+};
+
+export type TmdbCrewMember = {
+  id: number;
+  name: string;
+  job: string;
   profile_path: string | null;
 };
 
@@ -29,11 +37,13 @@ export type TmdbMovieDetails = {
   genres: { id: number; name: string }[];
   credits?: {
     cast: {
+      id: number;
       name: string;
       character: string;
       profile_path: string | null;
       order: number;
     }[];
+    crew?: TmdbCrewMember[];
   };
 };
 
@@ -50,18 +60,53 @@ async function apiKey(): Promise<string> {
 }
 
 async function tmdbGet<T>(path: string, params: Record<string, string> = {}): Promise<T> {
-  const url = new URL(`${TMDB_API}${path}`);
-  url.searchParams.set("api_key", await apiKey());
-  url.searchParams.set("language", "en-US");
-  for (const [key, value] of Object.entries(params)) {
-    if (value) url.searchParams.set(key, value);
+  const keys = tmdbKeyCandidates(await apiKey());
+  let lastStatus = 0;
+  for (const [key, mode] of keys) {
+    const response = await tmdbFetch(path, params, key, mode);
+    lastStatus = response.status;
+    if (response.ok) return (await response.json()) as T;
+    if (response.status !== 401 && response.status !== 403) break;
   }
+  throw new Error(`TMDB request failed (${lastStatus}) for ${path}`);
+}
 
-  const response = await fetch(url, { cache: "no-store" });
-  if (!response.ok) {
-    throw new Error(`TMDB request failed (${response.status}) for ${path}`);
+function tmdbKeyCandidates(primary: string): [string, "query" | "bearer"][] {
+  const keys = [primary];
+  const fallback = fallbackTmdbApiKey(primary);
+  if (fallback) keys.push(fallback);
+  const unique = [...new Set(keys)];
+  const modes: ("query" | "bearer")[] = ["query", "bearer"];
+  const out: [string, "query" | "bearer"][] = [];
+  for (const key of unique) {
+    const preferred: ("query" | "bearer")[] = key.startsWith("eyJ")
+      ? ["bearer", "query"]
+      : ["query", "bearer"];
+    for (const mode of preferred) {
+      if (modes.includes(mode)) out.push([key, mode]);
+    }
   }
-  return (await response.json()) as T;
+  return out;
+}
+
+async function tmdbFetch(
+  path: string,
+  params: Record<string, string>,
+  key: string,
+  mode: "query" | "bearer",
+): Promise<Response> {
+  const url = new URL(`${TMDB_API}${path}`);
+  url.searchParams.set("language", "en-US");
+  for (const [name, value] of Object.entries(params)) {
+    if (value) url.searchParams.set(name, value);
+  }
+  const headers: Record<string, string> = {};
+  if (mode === "bearer") {
+    headers.Authorization = `Bearer ${key}`;
+  } else {
+    url.searchParams.set("api_key", key);
+  }
+  return fetch(url, { cache: "no-store", headers });
 }
 
 export async function searchMovies(

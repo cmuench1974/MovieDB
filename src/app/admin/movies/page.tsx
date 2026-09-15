@@ -43,8 +43,8 @@ export default async function AdminMoviesPage({ searchParams }: PageProps<"/admi
           Library metadata
         </h2>
         <p className="mt-2 mb-4 text-sm text-zinc-400">
-          Refresh TMDB title, overview, cast, and genres for every movie. Chosen posters stay as
-          they are.
+          Refresh TMDB title, overview, cast, directors, and genres for every movie. Chosen posters
+          stay as they are. Run this once after an upgrade so actor and director pages are populated.
         </p>
         <ScanButton tmdbConfigured={tmdbConfigured} showScan={false} showMetadata />
       </section>

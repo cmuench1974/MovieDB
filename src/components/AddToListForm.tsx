@@ -1,8 +1,12 @@
 "use client";
 
-import Link from "next/link";
-import { useActionState } from "react";
-import { addMovieToListAction } from "@/app/lists/actions";
+import { useActionState, useState } from "react";
+import { addMovieToListAction, createListAction } from "@/app/lists/actions";
+
+const NEW_LIST = "__new__";
+
+const fieldClass =
+  "mt-1 block min-w-48 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-amber-400";
 
 export function AddToListForm({
   movieId,
@@ -11,45 +15,63 @@ export function AddToListForm({
   movieId: string;
   lists: { id: string; name: string }[];
 }) {
-  const bound = addMovieToListAction.bind(null, movieId);
-  const [state, formAction, pending] = useActionState(bound, undefined);
+  const [selected, setSelected] = useState(lists[0]?.id ?? NEW_LIST);
+  const creating = selected === NEW_LIST;
 
-  if (lists.length === 0) {
-    return (
-      <p className="mt-6 text-sm text-zinc-400">
-        <Link href="/lists/new" className="text-amber-400 hover:text-amber-300">
-          Create a list
-        </Link>{" "}
-        to save this title.
-      </p>
-    );
-  }
+  const addBound = addMovieToListAction.bind(null, movieId);
+  const createBound = createListAction.bind(null, movieId);
+  const [addState, addAction, addPending] = useActionState(addBound, undefined);
+  const [createState, createAction, createPending] = useActionState(
+    createBound,
+    undefined,
+  );
+
+  const pending = creating ? createPending : addPending;
+  const error = creating ? createState?.error : addState?.error;
+  const added = !creating && addState?.ok;
 
   return (
-    <form action={formAction} className="mt-6 flex flex-wrap items-end gap-2">
+    <form
+      action={creating ? createAction : addAction}
+      className="mt-6 flex flex-wrap items-end gap-2"
+    >
+      {creating ? null : <input type="hidden" name="listId" value={selected} />}
       <label className="block text-sm text-zinc-300">
         Add to list
         <select
-          name="listId"
-          required
-          className="mt-1 block min-w-48 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-amber-400"
+          value={selected}
+          onChange={(event) => setSelected(event.target.value)}
+          className={fieldClass}
         >
           {lists.map((list) => (
             <option key={list.id} value={list.id}>
               {list.name}
             </option>
           ))}
+          <option value={NEW_LIST}>New list</option>
         </select>
       </label>
+      {creating ? (
+        <label className="block text-sm text-zinc-300">
+          Name
+          <input name="name" required autoComplete="off" className={fieldClass} />
+        </label>
+      ) : null}
       <button
         type="submit"
         disabled={pending}
         className="rounded-lg border border-zinc-700 px-3 py-2 text-sm text-zinc-200 hover:border-amber-400 disabled:opacity-60"
       >
-        {pending ? "Adding…" : "Add"}
+        {creating
+          ? pending
+            ? "Saving…"
+            : "Create list"
+          : pending
+            ? "Adding…"
+            : "Add"}
       </button>
-      {state?.error ? <p className="w-full text-sm text-red-400">{state.error}</p> : null}
-      {state?.ok ? <p className="w-full text-sm text-emerald-400">Added to the list.</p> : null}
+      {error ? <p className="w-full text-sm text-red-400">{error}</p> : null}
+      {added ? <p className="w-full text-sm text-emerald-400">Added to the list.</p> : null}
     </form>
   );
 }

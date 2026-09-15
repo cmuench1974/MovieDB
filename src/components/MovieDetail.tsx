@@ -6,6 +6,7 @@ import { useState } from "react";
 import { PosterImage } from "./PosterImage";
 import { MovieAdminButtons } from "./MovieAdminButtons";
 import { AddToListForm } from "./AddToListForm";
+import { pathWithQuery } from "@/lib/navigation";
 import type { MovieVersionView } from "@/lib/movie-view";
 
 type MovieDetailProps = {
@@ -25,6 +26,8 @@ type MovieDetailProps = {
   catalogRuntime: string | null;
   backHref: string;
   returnPath: string;
+  directors: { id: string; name: string }[];
+  directorFallback?: string | null;
 };
 
 export function MovieDetail({
@@ -44,6 +47,8 @@ export function MovieDetail({
   catalogRuntime,
   backHref,
   returnPath,
+  directors,
+  directorFallback,
 }: MovieDetailProps) {
   const router = useRouter();
   const fallback = versions[0] ?? null;
@@ -72,6 +77,24 @@ export function MovieDetail({
           Back
         </Link>
         <h1 className="mt-4 text-3xl font-semibold tracking-tight md:text-4xl">{title}</h1>
+        {directors.length > 0 ? (
+          <p className="mt-2 text-sm text-zinc-400">
+            Directed by{" "}
+            {directors.map((person, index) => (
+              <span key={person.id}>
+                {index > 0 ? ", " : null}
+                <Link
+                  href={`/people/${person.id}?from=${encodeURIComponent(`/movies/${movieId}`)}`}
+                  className="text-zinc-200 hover:text-amber-300"
+                >
+                  {person.name}
+                </Link>
+              </span>
+            ))}
+          </p>
+        ) : directorFallback ? (
+          <p className="mt-2 text-sm text-zinc-400">Directed by {directorFallback}</p>
+        ) : null}
         {hidden ? (
           <p className="mt-2 text-sm text-amber-400">Hidden from the public catalog.</p>
         ) : null}
@@ -118,11 +141,13 @@ export function MovieDetail({
         {genres.length > 0 ? (
           <ul className="mt-4 flex flex-wrap gap-2">
             {genres.map((genre) => (
-              <li
-                key={genre.id}
-                className="rounded-full border border-zinc-700 px-3 py-1 text-xs text-zinc-300"
-              >
-                {genre.name}
+              <li key={genre.id}>
+                <Link
+                  href={pathWithQuery("/", { genre: genre.id })}
+                  className="block rounded-full border border-zinc-700 px-3 py-1 text-xs text-zinc-300 hover:border-amber-400 hover:text-amber-200"
+                >
+                  {genre.name}
+                </Link>
               </li>
             ))}
           </ul>

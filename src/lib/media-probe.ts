@@ -48,12 +48,12 @@ type ProbeResult = {
   probeError: string | null;
 };
 
-export async function probeVideoIfNeeded(fileId: string): Promise<void> {
+export async function probeVideoIfNeeded(fileId: string): Promise<ProbeResult | null> {
   const file = await prisma.videoFile.findUnique({
     where: { id: fileId },
     include: { folder: true },
   });
-  if (!file) return;
+  if (!file) return null;
 
   const result = await probeVideoFile(file);
   await prisma.videoFile.update({
@@ -71,6 +71,7 @@ export async function probeVideoIfNeeded(fileId: string): Promise<void> {
       probedAt: new Date(),
     },
   });
+  return result;
 }
 
 export async function probeVideoFile(

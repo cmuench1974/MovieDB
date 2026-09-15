@@ -39,6 +39,11 @@ enum FolderKind {
   smb
 }
 
+enum CreditRole {
+  actor
+  director
+}
+
 model Genre {
   id     String  @id @default(cuid())
   tmdbId Int     @unique
@@ -58,9 +63,12 @@ model Movie {
   posterPath    String?
   backdropPath  String?
   releaseDate   String?
+  // Kommagetrennte Regie-Namen für Anzeige und Suche (neben MovieCredit).
+  directorName  String?
   // Snapshot of the top billed cast from TMDB (name, character, profile path).
   cast          Json?
   genres        Genre[]
+  credits       MovieCredit[]
   hidden        Boolean     @default(false)
   videoFiles    VideoFile[]
   listItems     MovieListItem[]
@@ -70,6 +78,34 @@ model Movie {
   @@index([year])
   @@index([title])
   @@index([hidden])
+  @@index([directorName])
+}
+
+model Person {
+  id          String        @id @default(cuid())
+  tmdbId      Int           @unique
+  name        String
+  profilePath String?
+  credits     MovieCredit[]
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([name])
+}
+
+model MovieCredit {
+  id           String     @id @default(cuid())
+  movieId      String
+  movie        Movie      @relation(fields: [movieId], references: [id], onDelete: Cascade)
+  personId     String
+  person       Person     @relation(fields: [personId], references: [id], onDelete: Cascade)
+  role         CreditRole
+  character    String?
+  billingOrder Int        @default(0)
+
+  @@unique([movieId, personId, role])
+  @@index([personId, role])
+  @@index([movieId, role])
 }
 
 model ScanFolder {

@@ -25,6 +25,15 @@ export function startScan(mode: "full" | "new" = "full"): { started: boolean; er
   return { started: true };
 }
 
+/** Liest bekannte Dateien neu: Name, Größe, Video/Audio/Untertitel — ohne TMDB. */
+export function startMediaRefresh(): { started: boolean; error?: string } {
+  if (!beginScan("media")) {
+    return { started: false, error: "A scan or metadata update is already running." };
+  }
+  void executeMediaRefresh();
+  return { started: true };
+}
+
 async function executeScan(onlyNew: boolean): Promise<void> {
   const job = await prisma.scanJob.create({
     data: { status: "running" },
@@ -213,6 +222,136 @@ async function executeScan(onlyNew: boolean): Promise<void> {
       processed,
       matched,
       needsReview,
+      skipped,
+      error: message,
+    });
+  } finally {
+    endScan();
+  }
+}
+
+async function executeMediaRefresh(): Promise<void> {
+  const job = await prisma.scanJob.create({
+    data: { status: "running" },
+  });
+
+  let filesFound = 0;
+  let processed = 0;
+  let matched = 0;
+  let skipped = 0;
+
+  try {
+    updateScanProgress({ status: "running", phase: "listing", currentFile: null });
+    const { files, errors } = await discoverVideoFiles();
+    const knownPaths = new Set(
+      (await prisma.videoFile.findMany({ select: { path: true } })).map((file) => file.path),
+    );
+    const queue = files.filter((file) => knownPaths.has(file.path));
+    filesFound = queue.length;
+    updateScanProgress({
+      phase: "probing",
+      filesFound,
+      folderErrors: errors,
+    });
+
+    for (const file of queue) {
+      await yieldScanControl();
+      processed += 1;
+      updateScanProgress({
+        processed,
+        currentFile: file.filename,
+        filesFound,
+        matched,
+        skipped,
+      });
+
+      const video = await prisma.videoFile.update({
+        where: { path: file.path },
+        data: {
+          filename: file.filename,
+          size: file.size,
+          lastSeenAt: new Date(),
+          folderId: file.folderId,
+        },
+      });
+
+      const probe = await probeVideoIfNeeded(video.id);
+      const probeFailed =
+        Boolean(probe?.probeError) && !probe?.probeError?.includes("Disc images");
+      if (probeFailed) skipped += 1;
+      else matched += 1;
+
+      updateScanProgress({ matched, skipped, processed });
+    }
+
+    const errorMessage = errors.length ? errors.join(" ") : undefined;
+    const status = errors.length && filesFound === 0 ? "failed" : "completed";
+
+    await prisma.scanJob.update({
+      where: { id: job.id },
+      data: {
+        status,
+        finishedAt: new Date(),
+        filesFound,
+        matched,
+        error: errorMessage,
+      },
+    });
+
+    updateScanProgress({
+      status,
+      phase: "idle",
+      currentFile: null,
+      filesFound,
+      processed,
+      matched,
+      skipped,
+      error: errorMessage,
+      folderErrors: errors,
+    });
+  } catch (error) {
+    if (error instanceof ScanStopped) {
+      await prisma.scanJob.update({
+        where: { id: job.id },
+        data: {
+          status: "cancelled",
+          finishedAt: new Date(),
+          filesFound,
+          matched,
+          error: "Stopped by user.",
+        },
+      });
+      updateScanProgress({
+        status: "cancelled",
+        phase: "idle",
+        currentFile: null,
+        filesFound,
+        processed,
+        matched,
+        skipped,
+        error: "Scan stopped.",
+      });
+      return;
+    }
+
+    const message = error instanceof Error ? error.message : "Scan failed.";
+    await prisma.scanJob.update({
+      where: { id: job.id },
+      data: {
+        status: "failed",
+        finishedAt: new Date(),
+        filesFound,
+        matched,
+        error: message,
+      },
+    });
+    updateScanProgress({
+      status: "failed",
+      phase: "idle",
+      currentFile: null,
+      filesFound,
+      processed,
+      matched,
       skipped,
       error: message,
     });

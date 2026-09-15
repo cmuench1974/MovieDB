@@ -5,6 +5,11 @@ import { MovieCard } from "@/components/MovieCard";
 import { Filters } from "@/components/Filters";
 import { CatalogScrollTo } from "@/components/CatalogScrollTo";
 import { auth } from "@/lib/auth";
+import {
+  genreOptionsWhere,
+  movieCatalogWhere,
+  yearOptionsWhere,
+} from "@/lib/catalog";
 import { movieTitleYearOrder, pathWithQuery } from "@/lib/navigation";
 
 export const dynamic = "force-dynamic";
@@ -15,45 +20,40 @@ export default async function Home({ searchParams }: PageProps<"/">) {
   const genre = typeof params.genre === "string" ? params.genre : "";
   const yearRaw = typeof params.year === "string" ? params.year : "";
   const year = yearRaw ? Number(yearRaw) : undefined;
+  const personId = typeof params.person === "string" ? params.person : "";
   const focusId = typeof params.focus === "string" ? params.focus : "";
   const session = await auth();
   const signedIn = Boolean(session?.user);
-  const visibility = signedIn ? {} : { hidden: false };
+  const catalog = {
+    query: query || undefined,
+    genre: genre || undefined,
+    year: year && Number.isFinite(year) ? year : undefined,
+    person: personId || undefined,
+    signedIn,
+  };
 
-  const [movies, genres, years] = await Promise.all([
+  const [movies, genres, years, selectedPerson] = await Promise.all([
     prisma.movie.findMany({
-      where: {
-        AND: [
-          query
-            ? {
-                OR: [
-                  { title: { contains: query, mode: "insensitive" } },
-                  {
-                    videoFiles: {
-                      some: { title: { contains: query, mode: "insensitive" } },
-                    },
-                  },
-                ],
-              }
-            : {},
-          genre ? { genres: { some: { id: genre } } } : {},
-          year ? { year } : {},
-          visibility,
-        ],
-      },
+      where: movieCatalogWhere(catalog),
       orderBy: movieTitleYearOrder,
       include: { videoFiles: { select: { resolutionClass: true } } },
     }),
     prisma.genre.findMany({
-      where: { movies: { some: visibility } },
+      where: genreOptionsWhere(catalog),
       orderBy: { name: "asc" },
     }),
     prisma.movie.findMany({
-      where: { ...visibility, year: { not: null } },
+      where: yearOptionsWhere(catalog),
       select: { year: true },
       distinct: ["year"],
       orderBy: { year: "desc" },
     }),
+    personId
+      ? prisma.person.findUnique({
+          where: { id: personId },
+          select: { id: true, name: true },
+        })
+      : Promise.resolve(null),
   ]);
 
   const yearOptions = years
@@ -63,17 +63,19 @@ export default async function Home({ searchParams }: PageProps<"/">) {
     q: query || undefined,
     genre: genre || undefined,
     year: yearRaw || undefined,
+    person: selectedPerson?.id,
   });
 
   return (
     <>
-      <Header query={query} />
+      <Header query={query} genre={genre} year={yearRaw} personId={personId} />
       <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-8">
         <div className="mb-6 flex items-end justify-between gap-4">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">Catalog</h1>
             <p className="mt-1 text-sm text-zinc-400">
               {movies.length} {movies.length === 1 ? "movie" : "movies"}
+              {selectedPerson ? ` · ${selectedPerson.name}` : ""}
             </p>
           </div>
         </div>
@@ -84,6 +86,8 @@ export default async function Home({ searchParams }: PageProps<"/">) {
           selectedGenre={genre}
           selectedYear={yearRaw}
           query={query}
+          personId={selectedPerson?.id}
+          personName={selectedPerson?.name}
         />
 
         {movies.length === 0 ? (
