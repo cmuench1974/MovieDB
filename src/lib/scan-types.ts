@@ -7,6 +7,7 @@ export type ScanProgress = {
   phase: ScanPhase;
   kind: ScanKind;
   filesFound: number;
+  listedCount: number;
   processed: number;
   currentFile: string | null;
   matched: number;

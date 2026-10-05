@@ -3,7 +3,8 @@
 import { AuthError } from "next-auth";
 import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/admin";
-import { ignoreFile, matchFileByUrl, matchFileToTmdb } from "@/lib/matching";
+import { ignoreFile, matchFileByUrl, matchFileToTmdb, importVideoFileFromPath } from "@/lib/matching";
+import { listScanFolderDir } from "@/lib/scanner";
 import {
   addScanFolder,
   attachVideoFileToMovie,
@@ -210,6 +211,74 @@ export async function attachFileToMovieAction(
 export async function searchMoviesForAttachAction(query: string) {
   await requireAdmin();
   return searchLibraryMovies(query);
+}
+
+export async function listFolderBrowserAction(folderId: string, relativeDir: string) {
+  await requireAdmin();
+  try {
+    return { ok: true as const, ...(await listScanFolderDir(folderId, relativeDir)) };
+  } catch (error) {
+    return {
+      ok: false as const,
+      error: error instanceof Error ? error.message : "Could not list that folder.",
+    };
+  }
+}
+
+export async function importFileAction(
+  _prev: { ok?: boolean; error?: string; message?: string; href?: string } | undefined,
+  formData: FormData,
+): Promise<{ ok?: boolean; error?: string; message?: string; href?: string }> {
+  await requireAdmin();
+  try {
+    const result = await importVideoFileFromPath(
+      String(formData.get("path") ?? ""),
+      String(formData.get("folderId") ?? "").trim() || undefined,
+    );
+    revalidateLibrary();
+    if (result.movieId) {
+      revalidatePath(`/movies/${result.movieId}`);
+      revalidatePath(`/admin/movies/${result.movieId}`);
+    }
+
+    const title = result.movieTitle
+      ? `${result.movieTitle}${result.movieYear ? ` (${result.movieYear})` : ""}`
+      : result.filename;
+
+    if (result.status === "already_matched") {
+      return {
+        ok: true,
+        message: `${result.filename} is already in the library as ${title}. File info was refreshed.`,
+        href: result.movieId ? `/admin/movies/${result.movieId}` : undefined,
+      };
+    }
+    if (result.status === "matched") {
+      return {
+        ok: true,
+        message: result.created
+          ? `Added ${result.filename} and created ${title}.`
+          : `Added ${result.filename} and linked it to ${title}.`,
+        href: result.movieId ? `/admin/movies/${result.movieId}` : undefined,
+      };
+    }
+    if (result.needsTmdbKey) {
+      return {
+        ok: true,
+        message: `Added ${result.filename}. Save a TMDB API key, then open Review matches to pick a title.`,
+        href: "/admin/review",
+      };
+    }
+    return {
+      ok: true,
+      message: `Added ${result.filename}. The title was ambiguous — pick it under Review matches.`,
+      href: "/admin/review",
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "Could not add the file.",
+    };
+  }
 }
 
 export async function hideMovieAction(movieId: string, hidden: boolean) {

@@ -9,6 +9,7 @@ const idleProgress = (): ScanProgress => ({
   phase: "idle",
   kind: "full",
   filesFound: 0,
+  listedCount: 0,
   processed: 0,
   currentFile: null,
   matched: 0,
@@ -73,17 +74,30 @@ export function ScanButton({
 
   async function start(mode: ScanKind) {
     setError(null);
-    const response = await fetch("/api/admin/scan", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mode }),
+    setProgress({
+      ...idleProgress(),
+      status: "running",
+      kind: mode,
+      phase: mode === "metadata" ? "metadata" : "listing",
     });
-    const data = await response.json();
-    if (!response.ok) {
-      setError(data.error || "Could not start the job.");
-      return;
+    try {
+      const response = await fetch("/api/admin/scan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        setError(data.error || "Could not start the job.");
+        if (data.status) setProgress(data);
+        else setProgress(idleProgress());
+        return;
+      }
+      setProgress(data);
+    } catch {
+      setError("Could not start the job. Check the connection and try again.");
+      setProgress(idleProgress());
     }
-    setProgress(data);
   }
 
   async function control(action: "pause" | "resume" | "stop") {
@@ -186,12 +200,14 @@ export function ScanButton({
           <div className="flex items-center justify-between gap-3 text-sm">
             <p className="text-zinc-300">{statusLabel(progress)}</p>
             <p className="tabular-nums text-zinc-400">
-              {progress.filesFound > 0
-                ? `${progress.processed} / ${progress.filesFound}`
-                : busy
-                  ? "…"
-                  : "0 / 0"}
-              {percent !== null ? ` (${percent}%)` : ""}
+              {progress.phase === "listing"
+                ? `${progress.listedCount ?? 0} listed`
+                : progress.filesFound > 0
+                  ? `${progress.processed} / ${progress.filesFound}`
+                  : busy
+                    ? "…"
+                    : "0 / 0"}
+              {percent !== null && progress.phase !== "listing" ? ` (${percent}%)` : ""}
             </p>
           </div>
           <div className="h-2 overflow-hidden rounded-full bg-zinc-800">
@@ -236,10 +252,16 @@ function statusLabel(progress: ScanProgress) {
   if (progress.status === "completed") {
     if (progress.kind === "metadata") return "Metadata updated";
     if (progress.kind === "media") return "File info updated";
-    if (progress.kind === "new") return "New files finished";
+    if (progress.kind === "new") {
+      return progress.filesFound === 0 ? "No new files" : "New files finished";
+    }
     return "Finished";
   }
-  if (progress.phase === "listing") return "Listing files…";
+  if (progress.phase === "listing") {
+    return progress.listedCount > 0
+      ? `Listing files… ${progress.listedCount} found`
+      : "Listing files…";
+  }
   if (progress.phase === "probing") return "Reading media info…";
   if (progress.phase === "metadata") return "Updating metadata…";
   return "Matching titles…";
@@ -251,6 +273,14 @@ function countsLabel(progress: ScanProgress) {
   }
   if (progress.kind === "media") {
     return `${progress.matched} updated · ${progress.skipped} failed`;
+  }
+  if (progress.kind === "new") {
+    if (progress.status === "completed" && progress.filesFound === 0) {
+      return progress.listedCount > 0
+        ? `Listed ${progress.listedCount} files · all already in the library`
+        : "No video files found in the scan folders";
+    }
+    return `${progress.matched} matched · ${progress.needsReview} need review · ${progress.listedCount} listed`;
   }
   return `${progress.matched} matched · ${progress.needsReview} need review · ${progress.skipped} skipped`;
 }

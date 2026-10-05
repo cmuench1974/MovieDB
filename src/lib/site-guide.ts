@@ -72,8 +72,9 @@ function adminSections(site: string): GuideSection[] {
       items: [
         "Add a local/NFS path (visible inside the app container) or an SMB share under Settings. Edit and Test connection let you repair a share without removing it.",
         "Open Scan in the admin menu to run Scan folders, Scan new movies, Update file info, or Update metadata.",
+        "To add one movie that is already on a share, open Scan → Add one file. Browse the configured folder or paste an smb:// path. MovieDB checks the file, stores it, and looks up TMDB metadata.",
         "Scan folders re-checks every file, including technical media info.",
-        "Scan new movies only imports files that are not in the library yet.",
+        "Scan new movies lists every file on the shares, then imports only paths that are not in the library yet.",
         "Update file info re-reads filename, size, video (codec, HDR), audio, and subtitles for files already in the library. Titles and artwork stay as they are.",
         "Update metadata refreshes TMDB title, overview, cast, directors, and genres. Chosen posters and backdrops stay as they are. Existing titles need this once so actor and director pages fill in.",
         "Ambiguous filename matches go to Review matches, where you pick the right TMDB title or ignore the file.",

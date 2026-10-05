@@ -9,11 +9,22 @@ export class ScanStopped extends Error {
   }
 }
 
+type ScanRuntime = {
+  progress: ScanProgress;
+  control: "run" | "pause" | "stop";
+  active: boolean;
+  heartbeat: number;
+};
+
+const STALE_MS = 5 * 60 * 1000;
+const GLOBAL_KEY = "__moviedbScanRuntime" as const;
+
 const idleProgress = (): ScanProgress => ({
   status: "idle",
   phase: "idle",
   kind: "full",
   filesFound: 0,
+  listedCount: 0,
   processed: 0,
   currentFile: null,
   matched: 0,
@@ -22,11 +33,25 @@ const idleProgress = (): ScanProgress => ({
   folderErrors: [],
 });
 
-let progress: ScanProgress = idleProgress();
-let control: "run" | "pause" | "stop" = "run";
-let active = false;
+function runtime(): ScanRuntime {
+  const globalRef = globalThis as typeof globalThis & { [GLOBAL_KEY]?: ScanRuntime };
+  if (!globalRef[GLOBAL_KEY]) {
+    globalRef[GLOBAL_KEY] = {
+      progress: idleProgress(),
+      control: "run",
+      active: false,
+      heartbeat: 0,
+    };
+  }
+  return globalRef[GLOBAL_KEY];
+}
+
+function touch() {
+  runtime().heartbeat = Date.now();
+}
 
 export function getScanProgress(): ScanProgress {
+  const { progress } = runtime();
   return {
     ...progress,
     folderErrors: [...progress.folderErrors],
@@ -34,66 +59,118 @@ export function getScanProgress(): ScanProgress {
 }
 
 export function isScanActive(): boolean {
-  return active;
+  return runtime().active;
+}
+
+/** Löst hängengebliebene Locks (abgebrochener Request in Produktion). */
+export function recoverStaleScan() {
+  const rt = runtime();
+  if (!rt.active) return;
+  if (Date.now() - rt.heartbeat <= STALE_MS) return;
+  console.warn("Clearing a stale scan lock.");
+  rt.active = false;
+  rt.control = "run";
+  if (rt.progress.status === "running" || rt.progress.status === "paused") {
+    rt.progress = {
+      ...rt.progress,
+      status: "failed",
+      phase: "idle",
+      error: "The previous scan was interrupted. Start it again.",
+    };
+  }
 }
 
 export function beginScan(kind: ScanKind = "full"): boolean {
-  if (active) return false;
-  active = true;
-  control = "run";
-  progress = {
+  recoverStaleScan();
+  const rt = runtime();
+  if (rt.active) return false;
+  rt.active = true;
+  rt.control = "run";
+  rt.progress = {
     ...idleProgress(),
     status: "running",
     kind,
     phase: kind === "metadata" ? "metadata" : "listing",
   };
+  touch();
   return true;
 }
 
 export function endScan() {
-  active = false;
-  control = "run";
+  const rt = runtime();
+  rt.active = false;
+  rt.control = "run";
+  touch();
 }
 
 export function updateScanProgress(patch: Partial<ScanProgress>) {
-  progress = { ...progress, ...patch };
+  const rt = runtime();
+  rt.progress = { ...rt.progress, ...patch };
+  touch();
 }
 
 export function requestScanPause(): boolean {
-  if (!active || progress.status === "cancelled") return false;
-  if (progress.status !== "running" && progress.status !== "paused") return false;
-  control = "pause";
-  progress = { ...progress, status: "paused" };
+  const rt = runtime();
+  if (!rt.active || rt.progress.status === "cancelled") return false;
+  if (rt.progress.status !== "running" && rt.progress.status !== "paused") return false;
+  rt.control = "pause";
+  rt.progress = { ...rt.progress, status: "paused" };
+  touch();
   return true;
 }
 
 export function requestScanResume(): boolean {
-  if (!active || control !== "pause") return false;
-  control = "run";
-  progress = { ...progress, status: "running" };
+  const rt = runtime();
+  if (!rt.active || rt.control !== "pause") return false;
+  rt.control = "run";
+  rt.progress = { ...rt.progress, status: "running" };
+  touch();
   return true;
 }
 
 export function requestScanStop(): boolean {
-  if (!active) return false;
-  control = "stop";
-  progress = { ...progress, status: "cancelled", currentFile: null };
+  const rt = runtime();
+  if (!rt.active) return false;
+  rt.control = "stop";
+  rt.progress = { ...rt.progress, status: "cancelled", currentFile: null };
+  touch();
   return true;
 }
 
 export async function yieldScanControl(): Promise<void> {
+  const rt = runtime();
   while (true) {
-    if (control === "stop") throw new ScanStopped();
-    if (control === "pause") {
-      progress = { ...progress, status: "paused" };
+    if (rt.control === "stop") throw new ScanStopped();
+    if (rt.control === "pause") {
+      rt.progress = { ...rt.progress, status: "paused" };
       await delay(100);
       continue;
     }
-    if (progress.status === "paused") {
-      progress = { ...progress, status: "running" };
+    if (rt.progress.status === "paused") {
+      rt.progress = { ...rt.progress, status: "running" };
     }
+    touch();
     return;
   }
+}
+
+/**
+ * Löst die Arbeit vom HTTP-Request. Sonst wartet next start auf den Scan
+ * oder bricht ihn ab, sobald die Antwort rausgeht — auf Produktion wirkt der
+ * Klick dann wie „nichts passiert“.
+ */
+export function scheduleBackground(work: () => Promise<void>) {
+  setImmediate(() => {
+    void work().catch((error) => {
+      console.error("Background scan failed:", error);
+      updateScanProgress({
+        status: "failed",
+        phase: "idle",
+        error: error instanceof Error ? error.message : "Scan failed.",
+      });
+      endScan();
+    });
+  });
 }
 
 function delay(ms: number) {

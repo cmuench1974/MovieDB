@@ -1,13 +1,16 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 import { fillVersionEditorialFromMovie } from "./library";
-import { discoverVideoFiles } from "./scanner";
+import { discoverVideoFile, discoverVideoFiles } from "./scanner";
 import { normalizeTitle } from "./filename";
 import { probeVideoIfNeeded } from "./media-probe";
+import { hasTmdbApiKey } from "./settings";
 import {
   beginScan,
   endScan,
+  isScanActive,
   ScanStopped,
+  scheduleBackground,
   updateScanProgress,
   yieldScanControl,
 } from "./scan-state";
@@ -21,7 +24,7 @@ export function startScan(mode: "full" | "new" = "full"): { started: boolean; er
   if (!beginScan(mode)) {
     return { started: false, error: "A scan or metadata update is already running." };
   }
-  void executeScan(mode === "new");
+  scheduleBackground(() => executeScan(mode === "new"));
   return { started: true };
 }
 
@@ -30,7 +33,7 @@ export function startMediaRefresh(): { started: boolean; error?: string } {
   if (!beginScan("media")) {
     return { started: false, error: "A scan or metadata update is already running." };
   }
-  void executeMediaRefresh();
+  scheduleBackground(() => executeMediaRefresh());
   return { started: true };
 }
 
@@ -44,22 +47,46 @@ async function executeScan(onlyNew: boolean): Promise<void> {
   let matched = 0;
   let needsReview = 0;
   let skipped = 0;
+  let listedCount = 0;
   const newMovies = new Map<string, { id: string; title: string; year: number | null }>();
 
   try {
-    updateScanProgress({ status: "running", phase: "listing", currentFile: null });
-    const { files, errors } = await discoverVideoFiles();
+    updateScanProgress({ status: "running", phase: "listing", currentFile: null, listedCount: 0 });
+    const { files, errors } = await discoverVideoFiles((count, filename) => {
+      if (count === 1 || count % 5 === 0) {
+        updateScanProgress({
+          phase: "listing",
+          listedCount: count,
+          currentFile: filename,
+        });
+      }
+    });
     const existingPaths = onlyNew
       ? new Set(
-          (await prisma.videoFile.findMany({ select: { path: true } })).map((file) => file.path),
+          (await prisma.videoFile.findMany({ select: { path: true } })).map((file) =>
+            canonicalFilePath(file.path),
+          ),
         )
       : null;
-    const queue = existingPaths ? files.filter((file) => !existingPaths.has(file.path)) : files;
+    const queue = existingPaths
+      ? files.filter((file) => !existingPaths.has(canonicalFilePath(file.path)))
+      : files;
     filesFound = queue.length;
+    listedCount = files.length;
+    const alreadyKnown = listedCount - filesFound;
+    if (onlyNew) skipped = alreadyKnown;
+    console.log(
+      onlyNew
+        ? `Scan new movies: listed ${listedCount}, new ${filesFound}, already in library ${alreadyKnown}.`
+        : `Scan folders: listed ${listedCount}.`,
+    );
     updateScanProgress({
-      phase: "matching",
+      phase: filesFound ? "matching" : "idle",
       filesFound,
+      listedCount,
+      skipped,
       folderErrors: errors,
+      currentFile: null,
     });
 
     for (const file of queue) {
@@ -160,6 +187,7 @@ async function executeScan(onlyNew: boolean): Promise<void> {
       phase: "idle",
       currentFile: null,
       filesFound,
+      listedCount,
       processed,
       matched,
       needsReview,
@@ -241,8 +269,12 @@ async function executeMediaRefresh(): Promise<void> {
   let skipped = 0;
 
   try {
-    updateScanProgress({ status: "running", phase: "listing", currentFile: null });
-    const { files, errors } = await discoverVideoFiles();
+    updateScanProgress({ status: "running", phase: "listing", currentFile: null, listedCount: 0 });
+    const { files, errors } = await discoverVideoFiles((count, filename) => {
+      if (count === 1 || count % 5 === 0) {
+        updateScanProgress({ phase: "listing", listedCount: count, currentFile: filename });
+      }
+    });
     const knownPaths = new Set(
       (await prisma.videoFile.findMany({ select: { path: true } })).map((file) => file.path),
     );
@@ -368,6 +400,92 @@ async function pacedDelay() {
   }
 }
 
+export type ImportedVideoFile = {
+  filename: string;
+  status: "matched" | "needs_review" | "already_matched";
+  movieId?: string;
+  movieTitle?: string;
+  movieYear?: number | null;
+  created?: boolean;
+  needsTmdbKey?: boolean;
+};
+
+/** Eine Datei in einem Scan-Ordner anlegen, Media-Infos lesen und TMDB zuordnen. */
+export async function importVideoFileFromPath(
+  userPath: string,
+  folderId?: string,
+): Promise<ImportedVideoFile> {
+  if (isScanActive()) {
+    throw new Error("Wait until the current scan finishes, then add the file.");
+  }
+
+  const file = await discoverVideoFile(userPath, folderId);
+  const existing = await prisma.videoFile.findUnique({ where: { path: file.path } });
+  const video = await prisma.videoFile.upsert({
+    where: { path: file.path },
+    create: {
+      path: file.path,
+      filename: file.filename,
+      size: file.size,
+      parsedTitle: file.parsed.title,
+      parsedYear: file.parsed.year,
+      status: "pending",
+      folderId: file.folderId,
+    },
+    update: {
+      filename: file.filename,
+      size: file.size,
+      parsedTitle: file.parsed.title,
+      parsedYear: file.parsed.year,
+      lastSeenAt: new Date(),
+      folderId: file.folderId,
+    },
+  });
+
+  await probeVideoIfNeeded(video.id);
+
+  if (existing?.status === "matched" && existing.movieId) {
+    if (!existing.title) await fillVersionEditorialFromMovie(video.id);
+    const movie = await prisma.movie.findUnique({
+      where: { id: existing.movieId },
+      select: { id: true, title: true, year: true },
+    });
+    return {
+      filename: file.filename,
+      status: "already_matched",
+      movieId: movie?.id,
+      movieTitle: movie?.title,
+      movieYear: movie?.year,
+    };
+  }
+
+  if (!(await hasTmdbApiKey())) {
+    await prisma.videoFile.update({
+      where: { id: video.id },
+      data: { status: "needs_review", candidates: [] },
+    });
+    return { filename: file.filename, status: "needs_review", needsTmdbKey: true };
+  }
+
+  const result = await matchFromFilename(video.id, file.parsed.title, file.parsed.year);
+  if (result.status === "matched" && result.created && result.movie) {
+    try {
+      await notifyUsersAboutNewMovies([result.movie]);
+    } catch (error) {
+      console.error("Could not send new-movie notifications:", error);
+    }
+  }
+
+  return {
+    filename: file.filename,
+    status: result.status === "matched" ? "matched" : "needs_review",
+    movieId: result.movie?.id,
+    movieTitle: result.movie?.title,
+    movieYear: result.movie?.year,
+    created: result.created,
+  };
+}
+
 export async function matchFileToTmdb(fileId: string, tmdbId: number) {
   const { movie, created } = await upsertMovieFromTmdb(tmdbId);
   const file = await prisma.videoFile.findUnique({ where: { id: fileId } });
@@ -435,6 +553,14 @@ async function matchFromFilename(
     },
   });
   return { status: "needs_review" };
+}
+
+function canonicalFilePath(filePath: string): string {
+  let value = filePath.trim().replace(/\\/g, "/");
+  if (/^smb:/i.test(value)) {
+    value = `smb://${value.replace(/^smb:\/*/i, "")}`;
+  }
+  return value.toLowerCase();
 }
 
 function isHighConfidence(

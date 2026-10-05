@@ -11,6 +11,7 @@ import {
   beginScan,
   endScan,
   ScanStopped,
+  scheduleBackground,
   updateScanProgress,
   yieldScanControl,
 } from "./scan-state";
@@ -130,7 +131,7 @@ export function startMetadataRefresh(): { started: boolean; error?: string } {
   if (!beginScan("metadata")) {
     return { started: false, error: "A scan or metadata update is already running." };
   }
-  void executeMetadataRefresh();
+  scheduleBackground(() => executeMetadataRefresh());
   return { started: true };
 }
 

@@ -1,18 +1,31 @@
 import { prisma } from "@/lib/prisma";
 import { AdminNav } from "@/components/AdminNav";
 import { ScanButton } from "@/components/ScanButton";
+import { AddFileForm } from "@/components/AddFileForm";
 import { hasTmdbApiKey } from "@/lib/settings";
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminScanPage() {
-  const [movieCount, fileCount, reviewCount, lastJob, tmdbConfigured] = await Promise.all([
+  const [movieCount, fileCount, reviewCount, lastJob, tmdbConfigured, folders] = await Promise.all([
     prisma.movie.count(),
     prisma.videoFile.count(),
     prisma.videoFile.count({ where: { status: "needs_review" } }),
     prisma.scanJob.findFirst({ orderBy: { startedAt: "desc" } }),
     hasTmdbApiKey(),
+    prisma.scanFolder.findMany({
+      orderBy: { createdAt: "asc" },
+      select: {
+        id: true,
+        label: true,
+        kind: true,
+        path: true,
+        smbHost: true,
+        smbShare: true,
+        smbFolder: true,
+      },
+    }),
   ]);
 
   return (
@@ -61,6 +74,15 @@ export default async function AdminScanPage() {
           updates. Update file info can run without it.
         </p>
         <ScanButton tmdbConfigured={tmdbConfigured} />
+      </section>
+
+      <section className="mt-8 rounded-xl border border-zinc-800 bg-zinc-900 p-5">
+        <h2 className="text-lg font-medium">Add one file</h2>
+        <p className="mt-2 mb-4 text-sm text-zinc-400">
+          If a new movie is already on the share, paste its path here. MovieDB checks that the file
+          exists, stores it, reads media info, and looks up TMDB metadata.
+        </p>
+        <AddFileForm folders={folders} tmdbConfigured={tmdbConfigured} />
       </section>
     </main>
   );
