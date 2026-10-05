@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { AdminNav } from "@/components/AdminNav";
+import { AttachFileToMovie, OrphanMovieActions } from "@/components/FileLinkControls";
 import { requireAdmin } from "@/lib/admin";
 import { getLibraryFileOverview } from "@/lib/library-stats";
 
@@ -88,6 +89,9 @@ export default async function AdminFilesPage() {
       {overview.moviesWithoutFiles.length > 0 ? (
         <section className="mt-8">
           <h2 className="text-lg font-medium">Movies without a video file</h2>
+          <p className="mt-1 mb-3 text-sm text-zinc-500">
+            Remove the title, or point it at a file that is not attached to any movie.
+          </p>
           <ul className="mt-3 divide-y divide-zinc-800 rounded-xl border border-zinc-800">
             {overview.moviesWithoutFiles.map((movie) => (
               <li key={movie.id} className="px-4 py-3">
@@ -95,6 +99,7 @@ export default async function AdminFilesPage() {
                   {movie.title}
                   {movie.year ? ` (${movie.year})` : ""}
                 </Link>
+                <OrphanMovieActions movie={movie} unmatchedFiles={overview.unmatched} />
               </li>
             ))}
           </ul>
@@ -105,22 +110,18 @@ export default async function AdminFilesPage() {
         <section className="mt-8">
           <h2 className="text-lg font-medium">Files not attached to a movie</h2>
           <p className="mt-1 mb-3 text-sm text-zinc-500">
-            These count toward Video files but not Movies. Review or ignore them from Review
-            matches.
+            Search the library and assign a title, or resolve TMDB matches under Review matches.
           </p>
           <ul className="divide-y divide-zinc-800 rounded-xl border border-zinc-800">
             {overview.unmatched.map((file) => (
               <li key={file.id} className="px-4 py-3">
                 <p className="text-sm text-zinc-100">{file.filename}</p>
                 <p className="text-xs text-zinc-500">
-                  {[
-                    file.status.replace("_", " "),
-                    file.parsedTitle,
-                    file.parsedYear,
-                  ]
+                  {[file.status.replace("_", " "), file.parsedTitle, file.parsedYear]
                     .filter(Boolean)
                     .join(" · ")}
                 </p>
+                <AttachFileToMovie file={file} />
               </li>
             ))}
           </ul>

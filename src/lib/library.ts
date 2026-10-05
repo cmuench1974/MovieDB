@@ -1,6 +1,6 @@
-import { Prisma, type FolderKind } from "@prisma/client";
+import { Prisma, type FolderKind, type ScanFolder } from "@prisma/client";
 import { prisma } from "./prisma";
-import { encryptSecret } from "./secrets";
+import { decryptSecret, encryptSecret } from "./secrets";
 import {
   assertFolderReachable,
   isSafeLocalPath,
@@ -8,6 +8,7 @@ import {
   isValidShare,
   parseSmbLocation,
 } from "./scanner";
+import { smbErrorMessage } from "./smb-errors";
 import { getMovieDetails, parseTmdbMovieId, yearFromReleaseDate } from "./tmdb";
 import { applyTmdbDetailsToMovie, upsertMovieFromTmdb } from "./tmdb-sync";
 
@@ -23,7 +24,19 @@ export type FolderInput = {
   smbPassword?: string;
 };
 
-export async function addScanFolder(input: FolderInput) {
+type NormalizedFolder = {
+  label: string;
+  kind: FolderKind;
+  path?: string;
+  smbHost?: string;
+  smbShare?: string;
+  smbFolder?: string;
+  smbDomain?: string;
+  smbUsername?: string;
+  smbPassword?: string;
+};
+
+function normalizeFolderInput(input: FolderInput): NormalizedFolder {
   const label = input.label.trim();
   if (!label) throw new Error("Please enter a name for this folder.");
 
@@ -32,10 +45,7 @@ export async function addScanFolder(input: FolderInput) {
     if (!isSafeLocalPath(folderPath)) {
       throw new Error("Use an absolute path visible in the container, such as /media/movies.");
     }
-    await assertFolderReachable({ kind: "local", path: folderPath });
-    return prisma.scanFolder.create({
-      data: { label, kind: "local", path: folderPath },
-    });
+    return { label, kind: "local", path: folderPath };
   }
 
   let host = input.smbHost?.trim() ?? "";
@@ -61,7 +71,8 @@ export async function addScanFolder(input: FolderInput) {
     throw new Error("SMB username is required (use Guest for public shares).");
   }
 
-  await assertFolderReachable({
+  return {
+    label,
     kind: "smb",
     smbHost: host,
     smbShare: share,
@@ -69,18 +80,164 @@ export async function addScanFolder(input: FolderInput) {
     smbDomain: domain,
     smbUsername: username,
     smbPassword: password,
-  });
+  };
+}
 
+async function probeFolder(folder: NormalizedFolder) {
+  try {
+    await assertFolderReachable({
+      kind: folder.kind,
+      path: folder.path,
+      smbHost: folder.smbHost,
+      smbShare: folder.smbShare,
+      smbFolder: folder.smbFolder,
+      smbDomain: folder.smbDomain,
+      smbUsername: folder.smbUsername,
+      smbPassword: folder.smbPassword,
+    });
+  } catch (error) {
+    if (folder.kind === "smb") throw new Error(smbErrorMessage(error));
+    throw error instanceof Error ? error : new Error("Folder is not reachable.");
+  }
+}
+
+function smbVirtualPrefix(host: string, share: string) {
+  return `smb://${host}/${share}/`;
+}
+
+async function rewriteFolderFilePaths(existing: ScanFolder, next: NormalizedFolder) {
+  if (existing.kind === "local" && next.kind === "local") {
+    const from = (existing.path ?? "").replace(/\/+$/, "");
+    const to = (next.path ?? "").replace(/\/+$/, "");
+    if (!from || from === to) return;
+    const files = await prisma.videoFile.findMany({
+      where: { folderId: existing.id },
+      select: { id: true, path: true },
+    });
+    for (const file of files) {
+      if (file.path === from || file.path.startsWith(`${from}/`)) {
+        await prisma.videoFile.update({
+          where: { id: file.id },
+          data: { path: to + file.path.slice(from.length) },
+        });
+      }
+    }
+    return;
+  }
+
+  if (
+    existing.kind === "smb" &&
+    next.kind === "smb" &&
+    existing.smbHost &&
+    existing.smbShare &&
+    next.smbHost &&
+    next.smbShare
+  ) {
+    const from = smbVirtualPrefix(existing.smbHost, existing.smbShare);
+    const to = smbVirtualPrefix(next.smbHost, next.smbShare);
+    if (from === to) return;
+    const files = await prisma.videoFile.findMany({
+      where: { folderId: existing.id },
+      select: { id: true, path: true },
+    });
+    for (const file of files) {
+      if (file.path.toLowerCase().startsWith(from.toLowerCase())) {
+        await prisma.videoFile.update({
+          where: { id: file.id },
+          data: { path: to + file.path.slice(from.length) },
+        });
+      }
+    }
+  }
+}
+
+async function withStoredSecrets(folderId: string | undefined, input: FolderInput): Promise<FolderInput> {
+  if (!folderId) return input;
+  const existing = await prisma.scanFolder.findUnique({ where: { id: folderId } });
+  if (!existing) throw new Error("Folder not found.");
+  return {
+    ...input,
+    kind: existing.kind,
+    smbUsername: input.smbUsername?.trim() || existing.smbUsername || "",
+    smbPassword:
+      input.smbPassword && input.smbPassword.length > 0
+        ? input.smbPassword
+        : existing.smbPassword
+          ? decryptSecret(existing.smbPassword)
+          : "",
+    smbDomain: input.smbDomain?.trim() || existing.smbDomain || "",
+  };
+}
+
+export async function addScanFolder(input: FolderInput) {
+  const folder = normalizeFolderInput(input);
+  await probeFolder(folder);
   return prisma.scanFolder.create({
     data: {
-      label,
-      kind: "smb",
-      smbHost: host,
-      smbShare: share,
-      smbFolder: folder,
-      smbDomain: domain,
-      smbUsername: username,
-      smbPassword: password ? encryptSecret(password) : null,
+      label: folder.label,
+      kind: folder.kind,
+      path: folder.path,
+      smbHost: folder.smbHost,
+      smbShare: folder.smbShare,
+      smbFolder: folder.smbFolder,
+      smbDomain: folder.smbDomain,
+      smbUsername: folder.smbUsername,
+      smbPassword: folder.smbPassword ? encryptSecret(folder.smbPassword) : null,
+      lastError: null,
+    },
+  });
+}
+
+/** Prüft Erreichbarkeit. folderId füllt leeres Passwort aus dem gespeicherten Share. */
+export async function testScanFolder(input: FolderInput & { folderId?: string }) {
+  const merged = await withStoredSecrets(input.folderId, {
+    ...input,
+    label: input.label || "Folder",
+  });
+  const folder = normalizeFolderInput(merged);
+  try {
+    await probeFolder(folder);
+  } catch (error) {
+    if (input.folderId) {
+      await prisma.scanFolder.update({
+        where: { id: input.folderId },
+        data: { lastError: error instanceof Error ? error.message : "Folder is not reachable." },
+      });
+    }
+    throw error;
+  }
+  if (input.folderId) {
+    await prisma.scanFolder.update({
+      where: { id: input.folderId },
+      data: { lastError: null },
+    });
+  }
+}
+
+export async function updateScanFolder(folderId: string, input: FolderInput) {
+  const existing = await prisma.scanFolder.findUnique({ where: { id: folderId } });
+  if (!existing) throw new Error("Folder not found.");
+  const merged = await withStoredSecrets(folderId, { ...input, kind: existing.kind });
+  const folder = normalizeFolderInput({ ...merged, kind: existing.kind });
+  await probeFolder(folder);
+  await rewriteFolderFilePaths(existing, folder);
+  return prisma.scanFolder.update({
+    where: { id: folderId },
+    data: {
+      label: folder.label,
+      path: folder.kind === "local" ? folder.path : null,
+      smbHost: folder.kind === "smb" ? folder.smbHost : null,
+      smbShare: folder.kind === "smb" ? folder.smbShare : null,
+      smbFolder: folder.kind === "smb" ? folder.smbFolder : null,
+      smbDomain: folder.kind === "smb" ? folder.smbDomain : null,
+      smbUsername: folder.kind === "smb" ? folder.smbUsername : null,
+      smbPassword:
+        folder.kind === "smb"
+          ? folder.smbPassword
+            ? encryptSecret(folder.smbPassword)
+            : existing.smbPassword
+          : null,
+      lastError: null,
     },
   });
 }
@@ -249,4 +406,64 @@ export async function deleteMovie(movieId: string) {
     }),
     prisma.movie.delete({ where: { id: movieId } }),
   ]);
+}
+
+/** Hängt eine bereits bekannte Datei an einen vorhandenen Film (ohne TMDB). */
+export async function attachVideoFileToMovie(fileId: string, movieId: string) {
+  const [file, movie] = await Promise.all([
+    prisma.videoFile.findUnique({ where: { id: fileId } }),
+    prisma.movie.findUnique({ where: { id: movieId }, select: { id: true, title: true, year: true, overview: true } }),
+  ]);
+  if (!file) throw new Error("File not found.");
+  if (!movie) throw new Error("Movie not found.");
+
+  await prisma.videoFile.update({
+    where: { id: fileId },
+    data: {
+      movieId: movie.id,
+      status: "matched",
+      candidates: Prisma.DbNull,
+      title: file.title || movie.title,
+      year: file.year ?? movie.year,
+      overview: file.overview || movie.overview,
+    },
+  });
+}
+
+export async function searchLibraryMovies(query: string) {
+  const q = query.trim();
+  if (q.length < 2) return [];
+  return prisma.movie.findMany({
+    where: {
+      OR: [
+        { title: { contains: q, mode: "insensitive" } },
+        { originalTitle: { contains: q, mode: "insensitive" } },
+      ],
+    },
+    select: {
+      id: true,
+      title: true,
+      year: true,
+      _count: { select: { videoFiles: true } },
+    },
+    orderBy: { title: "asc" },
+    take: 12,
+  });
+}
+
+export async function testStoredScanFolder(folderId: string) {
+  const existing = await prisma.scanFolder.findUnique({ where: { id: folderId } });
+  if (!existing) throw new Error("Folder not found.");
+  await testScanFolder({
+    folderId,
+    label: existing.label,
+    kind: existing.kind,
+    path: existing.path ?? "",
+    smbHost: existing.smbHost ?? "",
+    smbShare: existing.smbShare ?? "",
+    smbFolder: existing.smbFolder ?? "",
+    smbDomain: existing.smbDomain ?? "",
+    smbUsername: existing.smbUsername ?? "",
+    smbPassword: "",
+  });
 }

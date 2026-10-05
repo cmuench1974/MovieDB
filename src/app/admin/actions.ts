@@ -6,10 +6,15 @@ import { requireAdmin } from "@/lib/admin";
 import { ignoreFile, matchFileByUrl, matchFileToTmdb } from "@/lib/matching";
 import {
   addScanFolder,
+  attachVideoFileToMovie,
   deleteMovie,
   removeScanFolder,
   saveMovieVersion,
+  searchLibraryMovies,
   setMovieHidden,
+  testScanFolder,
+  testStoredScanFolder,
+  updateScanFolder,
 } from "@/lib/library";
 import { clearLibrary, restoreDatabaseSql } from "@/lib/backup";
 import { clearTmdbApiKey, saveTmdbApiKey } from "@/lib/settings";
@@ -92,26 +97,31 @@ export async function logoutAction() {
 function revalidateLibrary() {
   revalidatePath("/");
   revalidatePath("/admin");
+  revalidatePath("/admin/scan");
   revalidatePath("/admin/review");
   revalidatePath("/admin/movies");
   revalidatePath("/admin/files");
 }
 
+function folderInputFromForm(formData: FormData) {
+  const kind = String(formData.get("kind") ?? "local") === "smb" ? "smb" : "local";
+  return {
+    label: String(formData.get("label") ?? ""),
+    kind: kind as "local" | "smb",
+    path: String(formData.get("path") ?? ""),
+    smbHost: String(formData.get("smbHost") ?? ""),
+    smbShare: String(formData.get("smbShare") ?? ""),
+    smbFolder: String(formData.get("smbFolder") ?? ""),
+    smbDomain: String(formData.get("smbDomain") ?? ""),
+    smbUsername: String(formData.get("smbUsername") ?? ""),
+    smbPassword: String(formData.get("smbPassword") ?? ""),
+  };
+}
+
 export async function addFolderAction(_prev: { error?: string } | undefined, formData: FormData) {
   await requireAdmin();
-  const kind = String(formData.get("kind") ?? "local") === "smb" ? "smb" : "local";
   try {
-    await addScanFolder({
-      label: String(formData.get("label") ?? ""),
-      kind,
-      path: String(formData.get("path") ?? ""),
-      smbHost: String(formData.get("smbHost") ?? ""),
-      smbShare: String(formData.get("smbShare") ?? ""),
-      smbFolder: String(formData.get("smbFolder") ?? ""),
-      smbDomain: String(formData.get("smbDomain") ?? ""),
-      smbUsername: String(formData.get("smbUsername") ?? ""),
-      smbPassword: String(formData.get("smbPassword") ?? ""),
-    });
+    await addScanFolder(folderInputFromForm(formData));
     revalidateLibrary();
     return { error: undefined };
   } catch (error) {
@@ -119,10 +129,87 @@ export async function addFolderAction(_prev: { error?: string } | undefined, for
   }
 }
 
+export async function updateFolderAction(
+  folderId: string,
+  _prev: { error?: string; ok?: boolean } | undefined,
+  formData: FormData,
+) {
+  await requireAdmin();
+  try {
+    await updateScanFolder(folderId, folderInputFromForm(formData));
+    revalidateLibrary();
+    return { ok: true, error: undefined };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "Could not save the folder.",
+    };
+  }
+}
+
+export async function testFolderAction(
+  _prev: { error?: string; ok?: boolean } | undefined,
+  formData: FormData,
+) {
+  await requireAdmin();
+  try {
+    const folderId = String(formData.get("folderId") ?? "").trim();
+    await testScanFolder({ ...folderInputFromForm(formData), folderId: folderId || undefined });
+    revalidateLibrary();
+    return { ok: true, error: undefined };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "Could not reach the folder.",
+    };
+  }
+}
+
+export async function testStoredFolderAction(
+  folderId: string,
+): Promise<{ ok: boolean; error?: string }> {
+  await requireAdmin();
+  try {
+    await testStoredScanFolder(folderId);
+    revalidateLibrary();
+    return { ok: true };
+  } catch (error) {
+    revalidateLibrary();
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "Could not reach the folder.",
+    };
+  }
+}
+
 export async function removeFolderAction(folderId: string) {
   await requireAdmin();
   await removeScanFolder(folderId);
   revalidateLibrary();
+}
+
+export async function attachFileToMovieAction(
+  fileId: string,
+  movieId: string,
+): Promise<{ ok: boolean; error?: string }> {
+  await requireAdmin();
+  try {
+    await attachVideoFileToMovie(fileId, movieId);
+    revalidateLibrary();
+    revalidatePath(`/movies/${movieId}`);
+    revalidatePath(`/admin/movies/${movieId}`);
+    return { ok: true };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "Could not link the file.",
+    };
+  }
+}
+
+export async function searchMoviesForAttachAction(query: string) {
+  await requireAdmin();
+  return searchLibraryMovies(query);
 }
 
 export async function hideMovieAction(movieId: string, hidden: boolean) {

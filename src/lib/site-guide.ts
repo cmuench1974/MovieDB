@@ -63,14 +63,15 @@ function adminSections(site: string): GuideSection[] {
       title: "Admin area",
       items: [
         "Administrators see Admin in the header. Regular users cannot open /admin.",
-        `Start at ${site}/admin for folders, scans, TMDB, email, backup, and user accounts.`,
+        `Start at ${site}/admin for folders, TMDB, email, backup, and user accounts. Scan lives at ${site}/admin/scan.`,
         "A Homepage dashboard can show how many titles, files, and review-queue items are in the library.",
       ],
     },
     {
       title: "Folders and scanning",
       items: [
-        "Add a local/NFS path (visible inside the app container) or an SMB share under Settings.",
+        "Add a local/NFS path (visible inside the app container) or an SMB share under Settings. Edit and Test connection let you repair a share without removing it.",
+        "Open Scan in the admin menu to run Scan folders, Scan new movies, Update file info, or Update metadata.",
         "Scan folders re-checks every file, including technical media info.",
         "Scan new movies only imports files that are not in the library yet.",
         "Update file info re-reads filename, size, video (codec, HDR), audio, and subtitles for files already in the library. Titles and artwork stay as they are.",
@@ -85,7 +86,7 @@ function adminSections(site: string): GuideSection[] {
         "On a movie’s edit page you can change title/year/overview, rematch TMDB, pick poster and backdrop artwork, and refresh metadata for that title only.",
         "Hide, Edit, and Remove are also available on the public movie page for administrators.",
         "Signed-in users still see hidden titles, marked with a Hidden badge.",
-        `If the Movies and Video files numbers differ, open ${site}/admin/files for extra versions, unmatched files, and movies without a file.`,
+        `If the Movies and Video files numbers differ, open ${site}/admin/files. You can assign an unattached file to a title, or for a movie with no file: attach a file or remove the title.`,
       ],
     },
     {
@@ -103,7 +104,6 @@ function adminSections(site: string): GuideSection[] {
         "Store the TMDB API key on the admin page (encrypted). Scans and metadata refresh need it.",
         "Download a SQL backup anytime, or restore a previous .sql backup (this replaces the whole database, including users). Type RESTORE to confirm.",
         "Clear database wipes movies and scan history but keeps the admin login and TMDB key. Disk files are never deleted.",
-        "If Movies and Video files counts differ, click Video files on the admin home to see extra versions, unmatched files, and titles without a file.",
       ],
     },
   ];

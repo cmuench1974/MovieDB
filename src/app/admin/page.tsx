@@ -1,6 +1,5 @@
 import { prisma } from "@/lib/prisma";
 import { AdminNav } from "@/components/AdminNav";
-import { ScanButton } from "@/components/ScanButton";
 import { FolderForm } from "@/components/FolderForm";
 import { FolderList } from "@/components/FolderList";
 import { TmdbKeyForm } from "@/components/TmdbKeyForm";
@@ -19,7 +18,21 @@ export default async function AdminPage() {
     prisma.videoFile.count(),
     prisma.videoFile.count({ where: { status: "needs_review" } }),
     prisma.scanJob.findFirst({ orderBy: { startedAt: "desc" } }),
-    prisma.scanFolder.findMany({ orderBy: { createdAt: "asc" } }),
+    prisma.scanFolder.findMany({
+      orderBy: { createdAt: "asc" },
+      select: {
+        id: true,
+        label: true,
+        kind: true,
+        path: true,
+        smbHost: true,
+        smbShare: true,
+        smbFolder: true,
+        smbDomain: true,
+        smbUsername: true,
+        lastError: true,
+      },
+    }),
     hasTmdbApiKey(),
     getPublicSmtpSettings(),
   ]);
@@ -29,7 +42,7 @@ export default async function AdminPage() {
       <AdminNav current="settings" />
       <h1 className="text-2xl font-semibold">Library maintenance</h1>
       <p className="mt-2 text-sm text-zinc-400">
-        Add folders or SMB shares, then scan. Ambiguous titles go to Review matches.
+        Add or repair folders and SMB shares, then open Scan. Ambiguous titles go to Review matches.
       </p>
 
       <dl className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-4">
@@ -47,6 +60,7 @@ export default async function AdminPage() {
         />
         <Stat
           label="Last scan"
+          href="/admin/scan"
           value={
             lastJob
               ? lastJob.status === "completed"
@@ -96,17 +110,6 @@ export default async function AdminPage() {
       </section>
 
       <DatabaseTools />
-
-      <section className="mt-8 rounded-xl border border-zinc-800 bg-zinc-900 p-5">
-        <h2 className="text-lg font-medium">Scan</h2>
-        <p className="mt-2 mb-4 text-sm text-zinc-400">
-          Scan folders re-checks every file (including media info). Scan new movies only adds files
-          that are not in the library yet. Update file info re-reads codec, HDR, audio, subtitles,
-          filename, and size for files you already have. Update metadata refreshes TMDB details for
-          titles you already have.
-        </p>
-        <ScanButton tmdbConfigured={tmdbConfigured} />
-      </section>
     </main>
   );
 }

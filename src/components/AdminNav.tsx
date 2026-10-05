@@ -5,13 +5,16 @@ import type { ReactNode } from "react";
 export function AdminNav({
   current,
 }: {
-  current: "settings" | "review" | "movies" | "users" | "files";
+  current: "settings" | "scan" | "review" | "movies" | "users" | "files";
 }) {
   return (
     <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
       <nav className="flex gap-2">
         <NavLink href="/admin" active={current === "settings"}>
           Settings
+        </NavLink>
+        <NavLink href="/admin/scan" active={current === "scan"}>
+          Scan
         </NavLink>
         <NavLink href="/admin/review" active={current === "review"}>
           Review matches
