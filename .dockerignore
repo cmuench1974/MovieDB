@@ -20,3 +20,6 @@ media
 # OS
 Thumbs.db
 .DS_Store
+
+#Procuction files
+docker-compose.override.yml
