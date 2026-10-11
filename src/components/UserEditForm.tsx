@@ -10,6 +10,8 @@ type EditableUser = {
   email: string;
   role: "admin" | "user";
   notifyNewMovies: boolean;
+  authentikLinked: boolean;
+  hasLocalPassword: boolean;
 };
 
 export function UserEditForm({
@@ -24,6 +26,12 @@ export function UserEditForm({
 
   return (
     <form action={formAction} className="space-y-4">
+      {user.authentikLinked ? (
+        <p className="rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-400">
+          Linked to Authentik. You can still set a local password so this person can sign in if
+          Authentik is unavailable.
+        </p>
+      ) : null}
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="block text-sm text-zinc-300">
           Username
@@ -51,7 +59,11 @@ export function UserEditForm({
             type="password"
             minLength={8}
             autoComplete="new-password"
-            placeholder="Leave blank to keep the current password"
+            placeholder={
+              user.hasLocalPassword
+                ? "Leave blank to keep the current password"
+                : "Optional local password"
+            }
             className="mt-1 w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 outline-none focus:border-amber-400"
           />
         </label>

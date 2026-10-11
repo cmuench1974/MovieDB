@@ -22,7 +22,18 @@ export default async function EditUserPage({ params }: PageProps<"/admin/users/[
       </p>
       <h1 className="mt-2 text-2xl font-semibold">Edit {user.username}</h1>
       <div className="mt-8 rounded-xl border border-zinc-800 bg-zinc-900 p-5">
-        <UserEditForm user={user} canDelete={user.id !== session?.user.id} />
+        <UserEditForm
+          user={{
+            id: user.id,
+            username: user.username,
+            email: user.email,
+            role: user.role,
+            notifyNewMovies: user.notifyNewMovies,
+            authentikLinked: Boolean(user.authentikSub),
+            hasLocalPassword: Boolean(user.passwordHash),
+          }}
+          canDelete={user.id !== session?.user.id}
+        />
       </div>
     </main>
   );

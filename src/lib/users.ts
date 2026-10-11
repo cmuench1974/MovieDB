@@ -164,6 +164,9 @@ export async function updateOwnCredentials(
 
   const current = await prisma.user.findUnique({ where: { id: userId } });
   if (!current) throw new Error("User not found.");
+  if (!current.passwordHash) {
+    throw new Error("This account signs in with Authentik. Email is updated from Authentik.");
+  }
 
   const valid = await bcrypt.compare(input.currentPassword, current.passwordHash);
   if (!valid) throw new Error("Current password is incorrect.");
@@ -188,9 +191,10 @@ export async function updateOwnCredentials(
 export async function deleteOwnAccount(userId: string, currentPassword: string) {
   const current = await prisma.user.findUnique({ where: { id: userId } });
   if (!current) throw new Error("User not found.");
-
-  const valid = await bcrypt.compare(currentPassword, current.passwordHash);
-  if (!valid) throw new Error("Current password is incorrect.");
+  if (current.passwordHash) {
+    const valid = await bcrypt.compare(currentPassword, current.passwordHash);
+    if (!valid) throw new Error("Current password is incorrect.");
+  }
 
   if (current.role === "admin") {
     const admins = await prisma.user.count({ where: { role: "admin" } });

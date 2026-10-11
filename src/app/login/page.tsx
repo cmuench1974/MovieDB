@@ -1,9 +1,34 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
+import { isAuthentikConfigured } from "@/lib/authentik";
 import { LoginForm } from "@/components/LoginForm";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import Link from "next/link";
+
+function oauthErrorMessage(error: string | undefined): string | undefined {
+  if (!error) return undefined;
+  let decoded = error;
+  try {
+    decoded = decodeURIComponent(error.replace(/\+/g, " "));
+  } catch {
+    decoded = error;
+  }
+  switch (decoded) {
+    case "AccessDenied":
+      return "Authentik sign-in was denied. Ask an administrator if your account is allowed.";
+    case "Configuration":
+      return "Authentik is not configured correctly.";
+    case "OAuthCallback":
+    case "Callback":
+    case "OAuthSignin":
+      return "Authentik sign-in failed. Check the issuer URL and the redirect URI.";
+    case "OAuthAccountNotLinked":
+      return "This email already has a MovieDB account. Sign in locally, or ask an administrator to link it.";
+    default:
+      return decoded.includes(" ") ? decoded : "Authentik sign-in failed.";
+  }
+}
 
 export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   const session = await auth();
@@ -11,6 +36,10 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
 
   const params = await searchParams;
   const callbackUrl = typeof params.callbackUrl === "string" ? params.callbackUrl : "/";
+  const authentikEnabled = await isAuthentikConfigured();
+  const oauthError = authentikEnabled
+    ? oauthErrorMessage(typeof params.error === "string" ? params.error : undefined)
+    : undefined;
 
   return (
     <>
@@ -22,7 +51,8 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
             The catalog can be viewed without an account. Sign in to see hidden titles and to create
             lists.
           </p>
-          <LoginForm callbackUrl={callbackUrl} />
+          {oauthError ? <p className="mb-4 text-sm text-red-400">{oauthError}</p> : null}
+          <LoginForm callbackUrl={callbackUrl} authentikEnabled={authentikEnabled} />
           <p className="mt-6 text-center text-sm">
             <Link href="/" className="text-zinc-400 hover:text-zinc-200">
               Back to catalog

@@ -5,14 +5,16 @@ import { FolderList } from "@/components/FolderList";
 import { TmdbKeyForm } from "@/components/TmdbKeyForm";
 import { DatabaseTools } from "@/components/DatabaseTools";
 import { SmtpSettingsForm } from "@/components/SmtpSettingsForm";
+import { AuthentikSettingsForm } from "@/components/AuthentikSettingsForm";
 import { hasTmdbApiKey } from "@/lib/settings";
 import { getPublicSmtpSettings } from "@/lib/mail";
+import { getPublicAuthentikSettings } from "@/lib/authentik";
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminPage() {
-  const [movieCount, fileCount, reviewCount, lastJob, folders, tmdbConfigured, smtp] =
+  const [movieCount, fileCount, reviewCount, lastJob, folders, tmdbConfigured, smtp, authentik] =
     await Promise.all([
     prisma.movie.count(),
     prisma.videoFile.count(),
@@ -35,6 +37,7 @@ export default async function AdminPage() {
     }),
     hasTmdbApiKey(),
     getPublicSmtpSettings(),
+    getPublicAuthentikSettings(),
   ]);
 
   return (
@@ -98,6 +101,15 @@ export default async function AdminPage() {
           editing <code>.env</code>.
         </p>
         <TmdbKeyForm configured={tmdbConfigured} />
+      </section>
+
+      <section className="mt-8 rounded-xl border border-zinc-800 bg-zinc-900 p-5">
+        <h2 className="text-lg font-medium">Authentik</h2>
+        <p className="mt-2 mb-4 text-sm text-zinc-400">
+          Optional single sign-on. Local accounts keep working. Copy the redirect URI into the
+          Authentik application, then paste client ID, secret, and issuer here.
+        </p>
+        <AuthentikSettingsForm settings={authentik} />
       </section>
 
       <section className="mt-8 rounded-xl border border-zinc-800 bg-zinc-900 p-5">

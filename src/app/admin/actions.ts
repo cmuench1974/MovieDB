@@ -90,6 +90,16 @@ export async function loginAction(_prev: { error?: string } | undefined, formDat
   }
 }
 
+export async function authentikLoginAction(formData: FormData) {
+  const { isAuthentikConfigured } = await import("@/lib/authentik");
+  if (!(await isAuthentikConfigured())) {
+    throw new Error("Authentik is not configured.");
+  }
+  const redirectTo = safeRedirectPath(String(formData.get("callbackUrl") ?? "/"));
+  const { signIn } = await import("@/lib/auth");
+  await signIn("authentik", { redirectTo });
+}
+
 export async function logoutAction() {
   const { signOut } = await import("@/lib/auth");
   await signOut({ redirectTo: "/" });
@@ -423,6 +433,40 @@ export async function clearTmdbKeyAction() {
   await requireAdmin();
   await clearTmdbApiKey();
   revalidatePath("/admin");
+}
+
+export async function saveAuthentikSettingsAction(
+  _prev: { error?: string; ok?: boolean } | undefined,
+  formData: FormData,
+) {
+  await requireAdmin();
+  try {
+    const { saveAuthentikSettings } = await import("@/lib/authentik");
+    await saveAuthentikSettings({
+      clientId: String(formData.get("clientId") ?? ""),
+      clientSecret: String(formData.get("clientSecret") ?? ""),
+      issuer: String(formData.get("issuer") ?? ""),
+      adminGroup: String(formData.get("adminGroup") ?? ""),
+      allowSignup: formData.get("allowSignup") === "on",
+      scopes: String(formData.get("scopes") ?? ""),
+    });
+    revalidatePath("/admin");
+    revalidatePath("/login");
+    return { ok: true, error: undefined };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "Could not save Authentik settings.",
+    };
+  }
+}
+
+export async function clearAuthentikSettingsAction() {
+  await requireAdmin();
+  const { clearAuthentikSettings } = await import("@/lib/authentik");
+  await clearAuthentikSettings();
+  revalidatePath("/admin");
+  revalidatePath("/login");
 }
 
 export async function saveSmtpSettingsAction(

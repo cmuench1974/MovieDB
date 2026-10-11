@@ -39,6 +39,7 @@ export default async function AdminUsersPage() {
                   {[
                     user.email,
                     user.role === "admin" ? "Administrator" : "User",
+                    user.authentikSub ? "Authentik" : user.passwordHash ? "Local" : null,
                     user.notifyNewMovies ? "New-movie emails" : null,
                     user.id === session?.user.id ? "You" : null,
                   ]

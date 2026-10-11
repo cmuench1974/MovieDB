@@ -14,7 +14,10 @@ model User {
   id              String     @id @default(cuid())
   username        String     @unique
   email           String     @unique
-  passwordHash    String
+  // Null bei reinen SSO-Konten (Authentik); lokal erstellte Konten haben immer einen Hash.
+  passwordHash    String?
+  // Authentik subject (OIDC `sub`). Verknüpft das lokale Konto mit dem IdP-Benutzer.
+  authentikSub    String?    @unique
   role            UserRole   @default(user)
   notifyNewMovies Boolean    @default(false)
   createdAt       DateTime   @default(now())

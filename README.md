@@ -59,6 +59,14 @@ If the bridge is not running, the container falls back to Samba `smbclient` and 
 
 On first start the admin user is created from `ADMIN_EMAIL` / `ADMIN_PASSWORD`. Later changes to `ADMIN_PASSWORD` in `.env` do **not** update an existing user (this avoids silently resetting your password on every restart).
 
+### Authentik (optional)
+
+Local username login stays available. Configure Authentik under **Admin → Authentik** (client ID, secret, issuer). The page shows the redirect URI to paste into Authentik: `{AUTH_URL}/api/auth/callback/authentik`.
+
+You can still set `AUTH_AUTHENTIK_ID` / `AUTH_AUTHENTIK_SECRET` / `AUTH_AUTHENTIK_ISSUER` in `.env` as a fallback. Values saved in Admin take precedence. Limit who can use the application in Authentik. To map groups, add a group property mapping and optionally fill Extra scopes.
+
+Keep the client secret private. The login page shows **Sign in with Authentik** once client ID, secret, and issuer are set.
+
 ## How matching works
 
 1. Filenames such as `The Matrix (1999).mkv` or `the.matrix.1999.1080p.mkv` are parsed into a title and year.
@@ -72,7 +80,7 @@ On first start the admin user is created from `ADMIN_EMAIL` / `ADMIN_PASSWORD`. 
 - Local media mounts should stay **read-only**.
 - SMB passwords are encrypted with `AUTH_SECRET` before they are stored. Changing `AUTH_SECRET` later makes stored SMB passwords unreadable — re-add those shares.
 - Full disk paths are not shown on public movie pages — only filenames.
-- Keep `.env` private (`AUTH_SECRET`, `ADMIN_PASSWORD`, `TMDB_API_KEY`, database password, share credentials).
+- Keep `.env` private (`AUTH_SECRET`, `ADMIN_PASSWORD`, `AUTH_AUTHENTIK_SECRET`, `TMDB_API_KEY`, database password, share credentials).
 
 ## Development (optional)
 

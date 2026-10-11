@@ -16,7 +16,7 @@ function userSections(site: string): GuideSection[] {
     {
       title: "Sign in",
       items: [
-        `Open ${site}/login and sign in with your username or email, plus the password your administrator set.`,
+        `Open ${site}/login. If the site uses Authentik, choose Sign in with Authentik. You can also use the username or email your administrator created.`,
         "The catalog is public. Signing in also shows hidden titles and unlocks lists.",
       ],
     },
@@ -44,7 +44,8 @@ function userSections(site: string): GuideSection[] {
     {
       title: "Your account",
       items: [
-        `Open ${site}/account (or Account in the header) to change your email, password, and new-movie notification emails.`,
+        `Open ${site}/account (or Account in the header) to change new-movie notification emails. Local accounts can also change their login email there.`,
+        "If you sign in with Authentik, your email is updated from Authentik.",
         "You can delete your own account there. The last administrator cannot be deleted. Your lists are removed; the catalog stays.",
       ],
     },
@@ -63,7 +64,7 @@ function adminSections(site: string): GuideSection[] {
       title: "Admin area",
       items: [
         "Administrators see Admin in the header. Regular users cannot open /admin.",
-        `Start at ${site}/admin for folders, TMDB, email, backup, and user accounts. Scan lives at ${site}/admin/scan.`,
+        `Start at ${site}/admin for folders, TMDB, Authentik, email, backup, and user accounts. Scan lives at ${site}/admin/scan.`,
         "A Homepage dashboard can show how many titles, files, and review-queue items are in the library.",
       ],
     },
@@ -93,8 +94,9 @@ function adminSections(site: string): GuideSection[] {
     {
       title: "Users and email",
       items: [
-        `Create accounts at ${site}/admin/users (username, email, password, user or administrator).`,
+        `Create local accounts at ${site}/admin/users (username, email, user or administrator).`,
         "A welcome email is sent when SMTP is configured. You can attach this site guide, matching the new account’s group.",
+        `Optional Authentik SSO: configure it under Settings. In Authentik, set the redirect URL to ${site}/api/auth/callback/authentik. Members of the administrator group you choose become MovieDB administrators. Local accounts keep working.`,
         "Per-user option: email when new movies are added.",
         "SMTP lives under Settings. Port 587 uses STARTTLS; port 465 uses implicit TLS. Send a test email after changing settings.",
       ],
