@@ -61,7 +61,9 @@ On first start the admin user is created from `ADMIN_EMAIL` / `ADMIN_PASSWORD`. 
 
 ### Authentik (optional)
 
-Local username login stays available. Configure Authentik under **Admin → Authentik** (client ID, secret, issuer). The page shows the redirect URI to paste into Authentik: `{AUTH_URL}/api/auth/callback/authentik`.
+Local username login stays available. Configure Authentik under **Admin → Authentik** (client ID, secret, issuer). The page shows the redirect URI to paste into Authentik.
+
+Behind Traefik set `AUTH_URL` to the public https origin (for example `https://movies.example.com`) or leave it empty so MovieDB uses `X-Forwarded-Host`. The default `http://localhost:3000` makes Authentik callbacks fail. After changing `AUTH_URL`, save Authentik settings again so the stored issuer matches Authentik’s OpenID discovery document.
 
 You can still set `AUTH_AUTHENTIK_ID` / `AUTH_AUTHENTIK_SECRET` / `AUTH_AUTHENTIK_ISSUER` in `.env` as a fallback. Values saved in Admin take precedence. Limit who can use the application in Authentik. To map groups, add a group property mapping and optionally fill Extra scopes.
 

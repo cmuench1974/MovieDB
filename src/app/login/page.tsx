@@ -18,7 +18,7 @@ function oauthErrorMessage(error: string | undefined): string | undefined {
     case "AccessDenied":
       return "Authentik sign-in was denied. Ask an administrator if your account is allowed.";
     case "Configuration":
-      return "Authentik is not configured correctly.";
+      return "Authentik sign-in failed (server configuration). Check the issuer URL in Admin → Authentik and that AUTH_URL is the public https address behind Traefik. Save Authentik settings again so the issuer matches Authentik.";
     case "OAuthCallback":
     case "Callback":
     case "OAuthSignin":

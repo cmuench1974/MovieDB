@@ -1,5 +1,6 @@
 import type { UserRole } from "@prisma/client";
 import { prisma } from "./prisma";
+import { headers } from "next/headers";
 import { decryptSecret, encryptSecret } from "./secrets";
 import { siteUrlFromSettings } from "./mail";
 
@@ -84,7 +85,9 @@ function mergeSettings(fromDb: StoredAuthentik | null, fromEnv: StoredAuthentik)
   return {
     clientId: (fromDb?.clientId || fromEnv.clientId || "").trim(),
     clientSecret: (fromDb?.clientSecret || fromEnv.clientSecret || "").trim(),
-    issuer: (fromDb?.issuer || fromEnv.issuer || "").trim().replace(/\/+$/, ""),
+    // Trailing slash bewusst behalten: Authentik liefert den Issuer oft mit Slash,
+    // Auth.js vergleicht ihn bytegenau mit der OpenID-Discovery.
+    issuer: (fromDb?.issuer || fromEnv.issuer || "").trim(),
     adminGroup: (fromDb?.adminGroup ?? fromEnv.adminGroup ?? "").trim(),
     allowSignup: fromDb?.allowSignup ?? fromEnv.allowSignup ?? true,
     scopes,
@@ -95,7 +98,15 @@ function mergeSettings(fromDb: StoredAuthentik | null, fromEnv: StoredAuthentik)
 export async function getAuthentikSettings(): Promise<AuthentikSettings | null> {
   if (cachedSettings !== undefined) return cachedSettings;
   const merged = mergeSettings(await storedSettings(), envSettings());
-  cachedSettings = isComplete(merged) ? merged : null;
+  if (!isComplete(merged)) {
+    cachedSettings = null;
+    return null;
+  }
+  try {
+    cachedSettings = { ...merged, issuer: await resolveCanonicalIssuer(merged.issuer) };
+  } catch {
+    cachedSettings = merged;
+  }
   return cachedSettings;
 }
 
@@ -107,7 +118,7 @@ export async function getPublicAuthentikSettings(): Promise<PublicAuthentikSetti
   const fromDb = await storedSettings();
   const fromEnv = envSettings();
   const merged = mergeSettings(fromDb, fromEnv);
-  const site = (await siteUrlFromSettings()).replace(/\/$/, "");
+  const site = await publicSiteUrl();
   return {
     clientId: merged.clientId,
     issuer: merged.issuer,
@@ -119,6 +130,20 @@ export async function getPublicAuthentikSettings(): Promise<PublicAuthentikSetti
     fromEnv: Boolean(!fromDb && fromEnv.clientId && fromEnv.clientSecret && fromEnv.issuer),
     redirectUri: `${site}/api/auth/callback/authentik`,
   };
+}
+
+async function publicSiteUrl(): Promise<string> {
+  const fromEnv = process.env.AUTH_URL?.trim();
+  if (fromEnv) return fromEnv.replace(/\/$/, "");
+  try {
+    const h = await headers();
+    const proto = h.get("x-forwarded-proto")?.split(",")[0]?.trim() || "http";
+    const host =
+      h.get("x-forwarded-host")?.split(",")[0]?.trim() || h.get("host") || "localhost:3000";
+    return `${proto}://${host}`;
+  } catch {
+    return (await siteUrlFromSettings()).replace(/\/$/, "");
+  }
 }
 
 function normalizeIssuer(value: string): string {
@@ -137,11 +162,16 @@ function normalizeIssuer(value: string): string {
   return issuer;
 }
 
-async function assertAuthentikIssuer(issuer: string): Promise<void> {
-  const discovery = `${issuer}/.well-known/openid-configuration`;
+/**
+ * Auth.js vergleicht den konfigurierten Issuer mit `issuer` aus der
+ * OpenID-Discovery. Authentik setzt dort oft einen Slash am Ende.
+ */
+async function resolveCanonicalIssuer(issuer: string): Promise<string> {
+  const base = issuer.trim().replace(/\/+$/, "");
+  const discovery = `${base}/.well-known/openid-configuration`;
   let response: Response;
   try {
-    response = await fetch(discovery, { cache: "no-store" });
+    response = await fetch(discovery, { cache: "no-store", redirect: "follow" });
   } catch {
     throw new Error(
       "Could not reach Authentik at that issuer URL. Check the slug and that MovieDB can reach Authentik.",
@@ -152,6 +182,11 @@ async function assertAuthentikIssuer(issuer: string): Promise<void> {
       `Authentik did not return OpenID configuration (${response.status}). Check the issuer URL.`,
     );
   }
+  const body = (await response.json()) as { issuer?: unknown };
+  if (typeof body.issuer !== "string" || !body.issuer.trim()) {
+    throw new Error("Authentik OpenID configuration did not include an issuer.");
+  }
+  return body.issuer.trim();
 }
 
 export async function saveAuthentikSettings(input: {
@@ -163,16 +198,14 @@ export async function saveAuthentikSettings(input: {
   scopes: string;
 }): Promise<void> {
   const clientId = input.clientId.trim();
-  const issuer = normalizeIssuer(input.issuer);
   if (!clientId) throw new Error("Please enter the Authentik client ID.");
+  const issuer = await resolveCanonicalIssuer(normalizeIssuer(input.issuer));
 
   const existing = mergeSettings(await storedSettings(), envSettings());
   const clientSecret = input.clientSecret.trim() || existing.clientSecret;
   if (!clientSecret) {
     throw new Error("Please enter the Authentik client secret.");
   }
-
-  await assertAuthentikIssuer(issuer);
 
   const settings: AuthentikSettings = {
     clientId,

@@ -85,10 +85,17 @@ export function AuthentikSettingsForm({ settings }: { settings: PublicAuthentikS
         />
         Create a MovieDB account on first Authentik sign-in
       </label>
+      {settings.redirectUri.includes("localhost") ? (
+        <p className="text-sm text-amber-300">
+          AUTH_URL still points at localhost. Behind Traefik set AUTH_URL to the public https URL
+          (no trailing slash) and put that same host in Authentik as the redirect URI.
+        </p>
+      ) : null}
       <p className="text-xs text-zinc-500">
-        Paste the redirect URI into the Authentik application. Issuer has no trailing slash. The
-        client secret is stored encrypted and never shown again. Members of the administrator group
-        become MovieDB administrators.
+        Paste the redirect URI into the Authentik application. Saving contacts Authentik and stores
+        the exact OpenID issuer (including a trailing slash if Authentik uses one). The client
+        secret is stored encrypted and never shown again. Members of the administrator group become
+        MovieDB administrators.
         {settings.configured
           ? settings.fromEnv
             ? " Authentik is currently enabled from environment variables."

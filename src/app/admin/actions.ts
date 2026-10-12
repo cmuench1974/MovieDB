@@ -97,7 +97,18 @@ export async function authentikLoginAction(formData: FormData) {
   }
   const redirectTo = safeRedirectPath(String(formData.get("callbackUrl") ?? "/"));
   const { signIn } = await import("@/lib/auth");
-  await signIn("authentik", { redirectTo });
+  try {
+    await signIn("authentik", { redirectTo });
+  } catch (error) {
+    if (error instanceof AuthError) {
+      redirect(
+        `/login?error=${encodeURIComponent(
+          "Authentik sign-in failed. Check the issuer URL, redirect URI, and AUTH_URL.",
+        )}`,
+      );
+    }
+    throw error;
+  }
 }
 
 export async function logoutAction() {

@@ -10,7 +10,7 @@ export const authConfig = {
   trustHost: true,
   secret: process.env.AUTH_SECRET,
   session: { strategy: "jwt" },
-  pages: { signIn: "/login" },
+  pages: { signIn: "/login", error: "/login" },
   providers: [Credentials],
   callbacks: {
     jwt({ token, user }) {
