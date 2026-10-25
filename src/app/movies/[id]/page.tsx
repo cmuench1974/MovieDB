@@ -8,7 +8,7 @@ import { MovieDetail } from "@/components/MovieDetail";
 import { formatVote, formatRuntime } from "@/lib/format";
 import { tmdbImageUrl } from "@/lib/tmdb-image";
 import { buildVersionViews, defaultVersionId } from "@/lib/movie-view";
-import type { TmdbCastMember } from "@/lib/tmdb";
+import { getMovieTrailerKey, type TmdbCastMember } from "@/lib/tmdb";
 import { auth } from "@/lib/auth";
 import { getOwnedLists } from "@/lib/lists";
 import { isAdminSession } from "@/lib/admin";
@@ -51,7 +51,10 @@ export default async function MoviePage({
   const vote = formatVote(movie.voteAverage);
   const versions = buildVersionViews(movie, movie.videoFiles);
   const initialVersionId = defaultVersionId(movie.videoFiles, requestedVersion);
-  const lists = session?.user?.id ? await getOwnedLists(session.user.id) : [];
+  const [lists, trailerKey] = await Promise.all([
+    session?.user?.id ? getOwnedLists(session.user.id) : [],
+    getMovieTrailerKey(movie.tmdbId).catch(() => null),
+  ]);
   const returnPath = safeReturnPath(typeof query.from === "string" ? query.from : undefined);
   const backHref = withMovieFocus(returnPath, movie.id);
   const personFrom = encodeURIComponent(`/movies/${movie.id}`);
@@ -86,6 +89,7 @@ export default async function MoviePage({
             catalogOverview={movie.overview}
             catalogRuntime={formatRuntime(movie.runtime)}
             backHref={backHref}
+            trailerKey={trailerKey}
             returnPath={returnPath}
             directors={directors}
             directorFallback={directors.length ? null : movie.directorName}

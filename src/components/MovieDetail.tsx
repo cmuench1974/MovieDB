@@ -6,6 +6,7 @@ import { useState } from "react";
 import { PosterImage } from "./PosterImage";
 import { MovieAdminButtons } from "./MovieAdminButtons";
 import { AddToListForm } from "./AddToListForm";
+import { TrailerButton } from "./TrailerButton";
 import { pathWithQuery } from "@/lib/navigation";
 import type { MovieVersionView } from "@/lib/movie-view";
 
@@ -25,6 +26,7 @@ type MovieDetailProps = {
   catalogOverview: string | null;
   catalogRuntime: string | null;
   backHref: string;
+  trailerKey: string | null;
   returnPath: string;
   directors: { id: string; name: string }[];
   directorFallback?: string | null;
@@ -46,6 +48,7 @@ export function MovieDetail({
   catalogOverview,
   catalogRuntime,
   backHref,
+  trailerKey,
   returnPath,
   directors,
   directorFallback,
@@ -70,12 +73,15 @@ export function MovieDetail({
         <PosterImage path={posterPath} alt={title} size="w500" />
       </div>
       <div className="flex flex-col justify-center">
-        <Link
-          href={backHref}
-          className="inline-flex w-fit rounded-lg border border-zinc-700 px-4 py-2 text-sm text-zinc-200 hover:border-amber-400"
-        >
-          Back
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href={backHref}
+            className="inline-flex w-fit rounded-lg border border-zinc-700 px-4 py-2 text-sm text-zinc-200 hover:border-amber-400"
+          >
+            Back
+          </Link>
+          {trailerKey ? <TrailerButton videoKey={trailerKey} title={title} /> : null}
+        </div>
         <h1 className="mt-4 text-3xl font-semibold tracking-tight md:text-4xl">{title}</h1>
         {directors.length > 0 ? (
           <p className="mt-2 text-sm text-zinc-400">

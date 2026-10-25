@@ -164,6 +164,37 @@ export async function getMovieImages(tmdbId: number): Promise<{
   };
 }
 
+type TmdbVideo = {
+  key: string;
+  site: string;
+  type: string;
+  official: boolean;
+  iso_639_1: string | null;
+  published_at?: string;
+};
+
+/** YouTube-Key des englischen Trailers (offizielle Trailer vor Teasern, neueste zuerst), sonst null. */
+export async function getMovieTrailerKey(tmdbId: number): Promise<string | null> {
+  const data = await tmdbGet<{ results?: TmdbVideo[] }>(`/movie/${tmdbId}/videos`, {
+    include_video_language: "en,null",
+  });
+
+  const score = (video: TmdbVideo) =>
+    (video.type === "Trailer" ? 4 : 0) +
+    (video.official ? 2 : 0) +
+    (video.iso_639_1 === "en" ? 1 : 0);
+
+  const best = (data.results ?? [])
+    .filter((video) => video.site === "YouTube" && video.key)
+    .filter((video) => video.type === "Trailer" || video.type === "Teaser")
+    .sort(
+      (a, b) =>
+        score(b) - score(a) || (b.published_at ?? "").localeCompare(a.published_at ?? ""),
+    )[0];
+
+  return best?.key ?? null;
+}
+
 function rankImages(items: TmdbImageOption[], limit: number): TmdbImageOption[] {
   return items
     .filter((item) => item.file_path)
