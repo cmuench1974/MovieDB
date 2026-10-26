@@ -159,8 +159,8 @@ export async function getMovieImages(tmdbId: number): Promise<{
   });
 
   return {
-    posters: rankImages(data.posters ?? [], 24),
-    backdrops: rankImages(data.backdrops ?? [], 16),
+    posters: rankImages(data.posters ?? []),
+    backdrops: rankImages(data.backdrops ?? []),
   };
 }
 
@@ -195,12 +195,11 @@ export async function getMovieTrailerKey(tmdbId: number): Promise<string | null>
   return best?.key ?? null;
 }
 
-function rankImages(items: TmdbImageOption[], limit: number): TmdbImageOption[] {
+function rankImages(items: TmdbImageOption[]): TmdbImageOption[] {
   return items
     .filter((item) => item.file_path)
     .slice()
-    .sort((a, b) => (b.vote_average ?? 0) - (a.vote_average ?? 0))
-    .slice(0, limit);
+    .sort((a, b) => (b.vote_average ?? 0) - (a.vote_average ?? 0));
 }
 
 /**

@@ -6,6 +6,8 @@ import { PosterImage } from "./PosterImage";
 
 type ArtOption = { file_path: string };
 
+const PAGE_SIZE = { poster: 24, backdrop: 16 } as const;
+
 export function MovieArtPicker({
   movieId,
   posterPath,
@@ -83,7 +85,12 @@ function ArtGrid({
   disabled: boolean;
   onSelect: (path: string) => void;
 }) {
+  const [page, setPage] = useState(0);
   const paths = uniquePaths([current, ...options.map((item) => item.file_path)]);
+  const pageSize = PAGE_SIZE[aspect];
+  const pageCount = Math.max(1, Math.ceil(paths.length / pageSize));
+  const currentPage = Math.min(page, pageCount - 1);
+  const visible = paths.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
 
   return (
     <div>
@@ -91,39 +98,64 @@ function ArtGrid({
       {paths.length === 0 ? (
         <p className="text-sm text-zinc-500">No {label.toLowerCase()} options from TMDB.</p>
       ) : (
-        <ul
-          className={
-            aspect === "poster"
-              ? "grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-6"
-              : "grid grid-cols-2 gap-2 sm:grid-cols-3"
-          }
-        >
-          {paths.map((path) => {
-            const selected = path === current;
-            return (
-              <li key={path}>
-                <button
-                  type="button"
-                  disabled={disabled || selected}
-                  onClick={() => onSelect(path)}
-                  className={`relative block w-full overflow-hidden rounded-lg border ${
-                    aspect === "poster" ? "aspect-[2/3]" : "aspect-video"
-                  } ${
-                    selected
-                      ? "border-amber-400 ring-1 ring-amber-400"
-                      : "border-zinc-800 hover:border-amber-400"
-                  } disabled:opacity-70`}
-                >
-                  <PosterImage
-                    path={path}
-                    alt=""
-                    size={aspect === "poster" ? "w185" : "w342"}
-                  />
-                </button>
-              </li>
-            );
-          })}
-        </ul>
+        <>
+          <ul
+            className={
+              aspect === "poster"
+                ? "grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-6"
+                : "grid grid-cols-2 gap-2 sm:grid-cols-3"
+            }
+          >
+            {visible.map((path) => {
+              const selected = path === current;
+              return (
+                <li key={path}>
+                  <button
+                    type="button"
+                    disabled={disabled || selected}
+                    onClick={() => onSelect(path)}
+                    className={`relative block w-full overflow-hidden rounded-lg border ${
+                      aspect === "poster" ? "aspect-[2/3]" : "aspect-video"
+                    } ${
+                      selected
+                        ? "border-amber-400 ring-1 ring-amber-400"
+                        : "border-zinc-800 hover:border-amber-400"
+                    } disabled:opacity-70`}
+                  >
+                    <PosterImage
+                      path={path}
+                      alt=""
+                      size={aspect === "poster" ? "w185" : "w342"}
+                    />
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+          {pageCount > 1 ? (
+            <nav className="mt-3 flex items-center justify-center gap-3 text-sm">
+              <button
+                type="button"
+                disabled={currentPage === 0}
+                onClick={() => setPage(currentPage - 1)}
+                className="rounded-lg border border-zinc-700 px-3 py-1 text-zinc-200 hover:border-amber-400 disabled:opacity-40 disabled:hover:border-zinc-700"
+              >
+                Previous
+              </button>
+              <span className="text-zinc-400">
+                Page {currentPage + 1} of {pageCount} · {paths.length} {label.toLowerCase()}s
+              </span>
+              <button
+                type="button"
+                disabled={currentPage >= pageCount - 1}
+                onClick={() => setPage(currentPage + 1)}
+                className="rounded-lg border border-zinc-700 px-3 py-1 text-zinc-200 hover:border-amber-400 disabled:opacity-40 disabled:hover:border-zinc-700"
+              >
+                Next
+              </button>
+            </nav>
+          ) : null}
+        </>
       )}
     </div>
   );

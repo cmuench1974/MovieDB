@@ -80,8 +80,8 @@ export default async function EditMoviePage({
           movieId={movie.id}
           posterPath={movie.posterPath}
           backdropPath={movie.backdropPath}
-          posters={images.posters}
-          backdrops={images.backdrops}
+          posters={images.posters.map(({ file_path }) => ({ file_path }))}
+          backdrops={images.backdrops.map(({ file_path }) => ({ file_path }))}
         />
       </div>
     </main>
